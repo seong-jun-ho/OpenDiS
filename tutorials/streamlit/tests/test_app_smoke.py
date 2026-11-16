@@ -1,0 +1,487 @@
+"""tests.test_app_smoke: the whole page, headless, with Streamlit's AppTest (README.md, Tests)."""
+import json
+import os
+import sys
+import tempfile
+import threading
+import time
+
+os.environ["OPENDIS_APP_RUNS"] = tempfile.mkdtemp(prefix="opendis_app_runs_")  # before the app
+
+# pylint: disable=wrong-import-position
+from pathlib import Path
+
+from streamlit.testing.v1 import AppTest
+
+from common import job, network3d, paths
+from common.picker import STEP_LIST
+from common.testing import check, summary
+
+APP = str(Path(__file__).resolve().parents[1] / "app.py")
+
+
+def page() -> AppTest:
+    """The page, run once."""
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.run()
+    return at
+
+
+def click(at: AppTest, label: str) -> None:
+    """Click the button with that label, and run."""
+    next(b for b in at.button if b.label == label).click().run()
+
+
+def choose(at: AppTest, label: str, code: str = "PyDiS", variant: str | None = None) -> None:
+    """Choose an example and its code in the sidebar's two menus, and its sub-example in step
+    1's menu, and run."""
+    at.selectbox(key="picker_example").select(label).run()
+    menu = at.selectbox(key=f"picker_core/{label}")
+    if menu.value != code:  # a menu of one code is disabled
+        menu.select(code).run()
+    if variant is not None:
+        at.selectbox(key=f"picker_variant_menu/{label}").select(variant).run()
+
+
+def shown(at: AppTest) -> list[dict]:
+    """What the 3-D window's component draws: its arguments."""
+    return [json.loads(c.proto.json_args) for c in at.get("component_instance")
+            if c.proto.component_name.endswith("network3d")]
+
+
+def main() -> int:  # pylint: disable=too-many-locals,too-many-statements
+    """Run every check."""
+    at = page()
+    picker = [s for s in at.sidebar.selectbox if s.label == "Example"]
+    codes = [(s.options, s.value, s.disabled) for s in at.sidebar.selectbox if s.label == "Core"]
+    text = "\n".join(m.value for m in at.markdown)
+    links = [c.value for c in at.sidebar.children[max(at.sidebar.children)].caption]
+    outputs = [c.value for c in at.code if "No run yet" in c.value]
+    initial = shown(at)
+    exadis = paths.exadis_status()["state"]
+    build = [b.label for b in at.button if b.label == "Build ExaDiS"]
+    results = [
+        check("the page loads without an exception", not at.exception, at.exception),
+        check("the banner says OpenDiS, with the logo, which links to the website",
+              "<h1>OpenDiS</h1>" in text and "data:image/png;base64," in text
+              and 'href="https://opendis.github.io/OpenDiS/" target="_blank"' in text),
+        check("in the sidebar, the Example menu: Frank-Read src, Binary junction, Uniaxial "
+              "tension, User stress, Precipitates, Initial configurations", len(picker) == 1
+              and picker[0].options == ["Frank-Read src", "Binary junction", "Uniaxial tension",
+                                        "User stress", "Precipitates", "Initial configurations"],
+              [s.options for s in at.selectbox]),
+        check("below it, the Core menu of the Frank-Read source: PyDiS, ExaDiS",
+              codes == [(["PyDiS", "ExaDiS"], "PyDiS", False)], codes),
+        check("no menu in the page's main part", not list(at.main.selectbox),
+              [s.label for s in at.main.selectbox]),
+        check(f"below 🗑 clear all results, ExaDiS's status ({exadis}), and Build ExaDiS only "
+              "while the app can build ExaDiS and has not",
+              (build == ["Build ExaDiS"]) if exadis in ("unbuilt", "failed") else
+              (not build and any(c.value.startswith("ExaDiS is") for c in at.caption)),
+              ([c.value for c in at.caption][-3:], build)),
+        check("the right column is the simulation output, not a chat",
+              "Simulation output" in text and "Chat" not in text and outputs, outputs),
+        check("seven steps", [o for r in at.radio if r.label == "Steps" for o in r.options]
+              == [s.label for s in STEP_LIST]),
+        check("last in the sidebar, a caption: the links to the list of engines and to the README",
+              len(links) == 1 and "[list of engines](https://opendis.streamlit.app/)" in links[0]
+              and "/tutorials/streamlit/README.md)" in links[0], links),
+        check("the 3-D window draws the initial configuration, in the app's first view",
+              len(initial) == 1 and [f["label"] for f in initial[0]["frames"]] ==
+              ["initial configuration"] and initial[0]["layout"]["scene"]["camera"]["eye"]["y"] < 0,
+              initial[:1]),
+    ]
+
+    # every step of each example, sub-example and code, by next › (the binary junction last)
+    for example, code, variant in (
+            ("Frank-Read src", "PyDiS", None), ("Frank-Read src", "ExaDiS", None),
+            ("Uniaxial tension", "PyDiS", None), ("Uniaxial tension", "ExaDiS", None),
+            ("User stress", "PyDiS", None), ("User stress", "ExaDiS", None),
+            ("Precipitates", "PyDiS", None), ("Precipitates", "ExaDiS", None),
+            ("Initial configurations", "PyDiS", None), ("Initial configurations", "ExaDiS", None),
+            ("Binary junction", "PyDiS", "FCC"), ("Binary junction", "ExaDiS", "FCC"),
+            ("Binary junction", "ExaDiS", None), ("Binary junction", "PyDiS", None)):
+        at = page()
+        choose(at, example, code, variant)
+        example = f"{example} {variant}" if variant else example
+        failures = []
+        labels = next(r for r in at.radio if r.label == "Steps").options
+        for label in labels:
+            if at.exception or at.warning:
+                failures.append((label, [e.value for e in at.exception],
+                                 [w.value for w in at.warning]))
+            if label != labels[-1]:
+                click(at, "next ›")
+        titles = "\n".join(m.value for m in at.markdown)
+        results += [check(f"{example} with {code}: every step draws, cleanly", not failures,
+                          failures),
+                    check(f"{example} with {code}: next › reaches the Run step",
+                          any(b.label == "▶ Run" for b in at.button)),
+                    check(f"{example} with {code}: the code panel is {code}'s",
+                          f"{code} code" in titles, titles[-500:])]
+    junction = [(s.options, s.disabled) for s in at.selectbox if s.label == "Core"]
+    results.append(check("the binary junction has two codes, PyDiS and ExaDiS",
+                         junction == [(["PyDiS", "ExaDiS"], False)], junction))
+
+    # the binary junction's crystal structures, in a menu of step 1: FCC is a sub-example of its
+    # own, at its step 1, and the choice stays while step 1 is not shown
+    at = page()
+    choose(at, "Binary junction")
+    menu = at.selectbox(key="picker_variant_menu/Binary junction")
+    offered = (menu.label, menu.options, menu.value)
+    menu.select("FCC").run()
+    titles = "\n".join(m.value for m in at.markdown)
+    step = next(r for r in at.radio if r.label == "Steps").value
+    junction_types = [s.options for s in at.selectbox if s.label == "Junction type"]
+    click(at, "next ›")
+    click(at, "‹ prev")
+    kept = at.selectbox(key="picker_variant_menu/Binary junction").value
+    results += [
+        check("in step 1 of the binary junction, the Crystal structure menu: BCC, FCC",
+              offered == ("Crystal structure", ["BCC", "FCC"], "BCC"), offered),
+        check("FCC is a sub-example of its own: its title, at step 1, with its junction types",
+              "Binary junction · FCC · PyDiS" in titles and step == STEP_LIST[0].label
+              and junction_types == [["lomer", "glissile", "hirth", "colinear"]],
+              (step, junction_types)),
+        check("the choice stays when step 1 is left and shown again", kept == "FCC", kept),
+    ]
+
+    # a changed selection marks its step; reset brings the example's values back
+    at = page()
+    next(n for n in at.number_input if n.label.startswith("Box length")).set_value(2000.0).run()
+    marked = next(r for r in at.radio if r.label == "Steps").format_func(STEP_LIST[0].label)
+    for _ in STEP_LIST[1:]:
+        click(at, "next ›")
+    click(at, "↺ reset to the example's values")
+    for _ in STEP_LIST[1:]:
+        click(at, "‹ prev")
+    box = next(n for n in at.number_input if n.label.startswith("Box length")).value
+    results += [check("a changed box length marks step 1 with •", marked.endswith("•")),
+                check("reset brings the box length back to 1000", box == 1000.0, box)]
+
+    # the binary junction, 20 steps; its replay plays in the 3-D window's component, in the
+    # browser (its behaviour is components/network3d/network3d.js's, checked with Node.js)
+    at = page()
+    choose(at, "Binary junction")
+    for _ in STEP_LIST[1:]:
+        click(at, "next ›")
+    next(n for n in at.number_input if n.label.startswith("max_step")).set_value(20).run()
+    written, write_live = [], network3d.write_live  # the snapshots that the 3-D window fetches
+    network3d.write_live = lambda run_id, label, net, **kwargs: (
+        written.append(label), write_live(run_id, label, net, **kwargs))
+    try:
+        click(at, "▶ Run")
+    finally:
+        network3d.write_live = write_live
+    left = sorted(p.name for p in network3d.LIVE.glob("*")) if network3d.LIVE.exists() else []
+    run_error = list(at.exception)
+    output = "\n".join(c.value for c in at.code)
+    successes = [s.value for s in at.success]
+    downloads = [d.label for d in at.get("download_button")]
+    view = next(r for r in at.radio if r.label == "3-D view").value
+    replay = shown(at)
+    next(r for r in at.radio if r.label == "3-D view").set_value("history").run()
+    history = [json.loads(c.proto.spec)["data"] for c in at.get("plotly_chart")]
+    results += [
+        check("the 3-D window replays the run's 3 snapshots, from the final one",
+              len(replay) == 1 and [f["label"] for f in replay[0]["frames"]] ==
+              ["step 0", "step 10", "final"] and replay[0]["start"] == "last",
+              [[f["label"] for f in r["frames"]] for r in replay]),
+        check("during the run, its newest snapshots are written for the 3-D window to fetch",
+              written and set(written) <= {"step 0", "step 10"}, written),
+        check("the newest snapshot's file is removed when the run ends", not left, left),
+        check("the run ends without an exception", not run_error, run_error),
+        check("the output column shows PyDiS's lines",
+              "init_two_disl_lines: z0 = 1.000000" in output and "step = 10" in output,
+              output[-300:]),
+        check("the history: the nodes and the density of the run's 2 snapshots",
+              len(history) == 1 and [t["x"] for t in history[0]] == [[0, 10], [0, 10]]
+              and all(y > 0 for t in history[0] for y in t["y"]),
+              [(t.get("x"), t.get("y")) for data in history for t in data]),
+        check("the output ends with the app's line on how the job ended",
+              "[app] done after" in output, output[-200:]),
+        check("the Run step says Done", any(s.startswith("Done after") for s in successes),
+              successes),
+        check("the view switched to the simulation", view == "simulation", view),
+        check("the final network, the whole run and the log are offered for download",
+              {"⬇ final network (JSON)", "⬇ the whole run (zip)", "⬇ log.txt"} <= set(downloads),
+              downloads),
+        check("no job is left running", not job.running()),
+    ]
+
+    # the Python console, on the run's objects; ↺ restart ends its session
+    next(r for r in at.radio if r.label == "Code panel").set_value("Python console").run()
+    at.text_area(key="console_source").input("G.num_nodes(), sim.max_step")  # sent on submit
+    next(b for b in at.button if b.label == "▶ execute").click().run()
+    final = next(Path(os.environ["OPENDIS_APP_RUNS"]).glob("binary_junction/*/output/*final.json"))
+    nodes = len(json.loads(final.read_text())["nodes"]["tags"])
+    transcript = "\n".join(c.value for c in at.code)
+    session = at.session_state["console"]
+    click(at, "↺ restart")
+    restarted = [c.value for c in at.code if ">>>" in c.value]
+    results += [
+        check("the console runs a command on the run's objects",
+              f">>> G.num_nodes(), sim.max_step\n({nodes}, 20)" in transcript, transcript[-300:]),
+        check("↺ restart ends the session and clears its commands",
+              not session.alive() and not restarted, restarted),
+    ]
+
+    # 🗑 clear all results, after the run: a confirmation in place, which Cancel closes, and
+    # Delete too
+    click(at, "🗑 clear all results")
+    asked = [b.label for b in at.button if b.key in ("clear_results", "clear_cancel")]
+    click(at, "Cancel")
+    kept = [p for p in Path(os.environ["OPENDIS_APP_RUNS"]).glob("*/*") if p.is_dir()]
+    cancelled = [b.label for b in at.button if b.key in ("clear_results", "clear_cancel")]
+    click(at, "🗑 clear all results")
+    click(at, "Delete")
+    left = [p for p in Path(os.environ["OPENDIS_APP_RUNS"]).glob("*/*") if p.is_dir()]
+    toasts = [t.value for t in at.toast]
+    output = "\n".join(c.value for c in at.code)
+    after = [b.label for b in at.button if b.key in ("clear_results", "clear_cancel", "clear_ask")]
+    results += [
+        check("🗑 clear all results asks first: Delete, or Cancel",
+              asked == ["Delete", "Cancel"], asked),
+        check("Cancel closes the question and deletes nothing", not cancelled and len(kept) == 1,
+              (cancelled, kept)),
+        check("Delete deletes the run's folder, and closes the question",
+              not left and after == ["🗑 clear all results"], (left, after)),
+        check("it says so, and the output column shows no run",
+              toasts == ["Deleted the results of 1 run(s)."] and "No run yet" in output,
+              (toasts, output[-200:])),
+    ]
+
+    # the Frank-Read source with ExaDiS, 20 steps: its snapshots, as PyDiS's, play
+    at = page()
+    choose(at, "Frank-Read src", "ExaDiS")
+    for _ in STEP_LIST[1:]:
+        click(at, "next ›")
+    next(n for n in at.number_input if n.label.startswith("max_step")).set_value(20).run()
+    click(at, "▶ Run")
+    output = "\n".join(c.value for c in at.code)
+    replay = shown(at)
+    successes = [s.value for s in at.success]
+    results += [
+        check("ExaDiS: the run ends without an exception, and says Done", not at.exception
+              and any(s.startswith("Done after") for s in successes),
+              ([e.value for e in at.exception], successes)),
+        check("ExaDiS: the output column shows ExaDiS's lines",
+              "init_frank_read_src_loop: length = 125.000000" in output and "step = 20" in output
+              and "RUN TIME" in output, output[-300:]),
+        check("ExaDiS: the 3-D window replays its snapshots and the final network",
+              len(replay) == 1 and [f["label"] for f in replay[0]["frames"]] ==
+              ["step 0", "step 10", "step 20", "final"],
+              [[f["label"] for f in r["frames"]] for r in replay]),
+        check("no job is left running after ExaDiS's", not job.running()),
+    ]
+
+    # the user stress, 20 steps: its field's link in step 3, its shear stress from a menu, and
+    # the history's third plot, the line's displacement against the time, with its velocity
+    at = page()
+    choose(at, "User stress")
+    initial = shown(at)
+    menus, links, refusal, unplaned = {}, {}, [], []
+    for _ in STEP_LIST[1:]:
+        click(at, "next ›")
+        menus.update((s.label, (s.options, s.value)) for s in at.main.selectbox
+                     if s.label.startswith("Shear stress"))
+        link = next((t for t in at.main.text_input if t.label == "Link to the field's file"), None)
+        if link is not None:  # an http link, refused, then the input file's again
+            links[link.label] = (link.value, link.disabled)
+            link.set_value(link.value.replace("https:", "http:")).run()
+            refusal = [w.value for w in at.warning]
+            next(t for t in at.main.text_input if t.label == link.label).set_value(
+                links[link.label][0]).run()
+            for kind in ("none", "space_time", "frozen"):  # a plane for each field, none without
+                next(s for s in at.main.selectbox if s.label == "User stress").set_value(
+                    kind).run()
+                drawn = shown(at)
+                unplaned.append((kind, [len(r.get("background", [])) for r in drawn],
+                                 drawn[-1]["frames"][-1]["data"][0]["line"]["color"],
+                                 next(t for t in at.main.text_input
+                                      if t.label == link.label).disabled))
+    next(n for n in at.number_input if n.label.startswith("max_step")).set_value(20).run()
+    click(at, "▶ Run")
+    replay = shown(at)
+    output = "\n".join(c.value for c in at.code)
+    successes = [s.value for s in at.success]
+    next(r for r in at.radio if r.label == "3-D view").set_value("history").run()
+    charts = [json.loads(c.proto.spec) for c in at.get("plotly_chart")]
+    third = [a["text"] for c in charts for a in c["layout"].get("annotations", [])
+             if a["text"].startswith("displacement")]
+    lines = [t.get("name") for c in charts for t in c["data"]]
+    value, disabled = links.get("Link to the field's file", ("", True))
+    results += [
+        check("user stress: step 3 shows the input file's Dropbox link, which can be changed",
+              list(links) == ["Link to the field's file"] and not disabled
+              and value.startswith("https://www.dropbox.com/") and value.endswith("&dl=1"), links),
+        check("user stress: step 3 warns of an http link", any(
+            "stress field link: must be an https link" in w for w in refusal), refusal),
+        check("user stress: the 3-D window draws the field on the slip plane under the initial "
+              "line, and under the run's replay, with the line black",
+              [len(r.get("background", [])) for r in initial + replay] == [3, 3]
+              and {r["frames"][-1]["data"][0]["line"]["color"] for r in initial + replay}
+              == {"#111111"}, [len(r.get("background", [])) for r in initial + replay]),
+        check("user stress: with no field, no plane, the line blue again and the link off; "
+              "user_stress.py's field on the plane, with the link off; the frozen field's plane "
+              "and link back", unplaned == [
+                  ("none", [0], "#1f4fd1", True), ("space_time", [3], "#111111", True),
+                  ("frozen", [3], "#111111", False)], unplaned),
+        check("user stress: step 6 offers the shear stresses 1 to 15 MPa, 5 MPa first",
+              menus == {"Shear stress τ on the line's slip system": (
+                  ["1 MPa", "3 MPa", "5 MPa", "7 MPa", "10 MPa", "15 MPa"], 5e6)}, menus),
+        check("user stress: the run ends without an exception, and says Done", not at.exception
+              and any(s.startswith("Done after") for s in successes),
+              ([e.value for e in at.exception], successes)),
+        check("user stress: the output column shows PyDiS's lines", "step = 10" in output,
+              output[-300:]),
+        check("user stress: the history plots the displacement against the time, with its "
+              "velocity and the drag velocity", len(third) == 1 and " m/s, against M b τ = 81.73 "
+              "m/s" in third[0] and lines[-3:] == ["displacement", "velocity over the second "
+                                                     "half", "M b τ"], (third, lines[-3:])),
+        check("no job is left running after the user stress's", not job.running()),
+    ]
+
+    # user_stress.py's field, which changes in time: the replay recolours the plane at each frame
+    at = page()
+    choose(at, "User stress")
+    for _ in STEP_LIST[1:]:
+        click(at, "next ›")
+        menu = next((s for s in at.main.selectbox if s.label == "User stress"), None)
+        if menu is not None and menu.value != "space_time":
+            menu.set_value("space_time").run()
+    next(n for n in at.number_input if n.label.startswith("max_step")).set_value(20).run()
+    click(at, "▶ Run")
+    moving = [frame.get("colors") for drawn in shown(at) for frame in drawn["frames"]]
+    results.append(check(
+        "user stress: with user_stress.py's field, each frame of the replay recolours the plane's "
+        "three surfaces at its time", len(moving) >= 2 and all(
+            colours is not None and len(colours) == 3 for colours in moving)
+        and moving[0] != moving[-1], [None if c is None else len(c) for c in moving]))
+
+    # the precipitates: their spheres under the initial line, which stays blue, and a 20-step run
+    for code in ("PyDiS", "ExaDiS"):
+        at = page()
+        choose(at, "Precipitates", code)
+        first = shown(at)
+        for _ in STEP_LIST[1:]:
+            click(at, "next ›")
+        next(n for n in at.number_input if n.label.startswith("max_step")).set_value(20).run()
+        click(at, "▶ Run")
+        spheres = [len(drawn.get("background", [])) for drawn in first + shown(at)]
+        results.append(check(
+            f"precipitates with {code}: ten spheres under the initial line, which stays blue, and "
+            "under the replay of a 20-step run, which ends done", spheres == [10, 10]
+            and first[0]["frames"][-1]["data"][0]["line"]["color"] == "#1f4fd1"
+            and any(s.value.startswith("Done after") for s in at.success),
+            (spheres, [s.value for s in at.success][:1])))
+
+    # the initial configurations: each of the tutorial's networks draws in step 1, and Run
+    # builds one with ExaDiS, which the run view shows
+    at = page()
+    choose(at, "Initial configurations", "ExaDiS")
+    drawn = {}
+    for label in ("simple dislocation source", "ParaDiS file", "infinite lines",
+                  "prismatic loops"):
+        next(s for s in at.selectbox if s.label == "Network").select(label).run()
+        frames = shown(at)
+        drawn[label] = (not at.exception and len(frames) == 1
+                        and [f["label"] for f in frames[0]["frames"]] == ["initial configuration"])
+    two = [o.removesuffix(" •") for r in at.radio if r.label == "Steps" for o in r.options]
+    click(at, "next ›")
+    click(at, "▶ Run")
+    output = "\n".join(c.value for c in at.code)
+    replay = shown(at)
+    results += [
+        check("initial configurations: two steps", two == ["1. Initialization", "2. Run"],
+              two),
+        check("initial configurations: each of the tutorial's networks draws in step 1",
+              all(drawn.values()), drawn),
+        check("initial configurations: Run builds the prismatic loops with ExaDiS",
+              "Create initial configuration of prismatic loops" in output
+              and any(s.value.startswith("Done after") for s in at.success), output[-300:]),
+        check("initial configurations: the run view shows the network that the run built",
+              len(replay) == 1 and [f["label"] for f in replay[0]["frames"]] == ["final"],
+              [[f["label"] for f in r["frames"]] for r in replay]),
+    ]
+
+    # until ExaDiS is built for this Python, its examples cannot run. Where the app does not
+    # build it (macOS), a line says so. Where it does (Linux), only Build ExaDiS starts the
+    # build, and a bar shows how far it is (a stand-in for the build: it sets the progress,
+    # waits, then fails)
+    started, done = threading.Event(), threading.Event()
+
+    def stand_in(progress: dict) -> str:
+        progress.update(phase="compiling", percent=45, file="exadis_pybind.cpp",
+                        start=time.monotonic() - 90)
+        started.set()
+        done.wait(60)
+        raise OSError("no build in this test")
+
+    def state(at: AppTest) -> tuple[bool, list[str], list[str]]:
+        """Whether Run is off, the warnings, and Build ExaDiS if it shows."""
+        return (next(b for b in at.button if b.label == "▶ Run").disabled,
+                [w.value for w in at.warning],
+                [b.label for b in at.button if b.label == "Build ExaDiS"])
+
+    saved = paths.EXADIS_MODULE, paths.CAN_BUILD_EXADIS, paths.build_exadis
+    paths.EXADIS_MODULE, paths.CAN_BUILD_EXADIS = "pyexadis.not-built.so", False
+    try:
+        at = page()
+        choose(at, "Frank-Read src", "ExaDiS")
+        for _ in STEP_LIST[1:]:
+            click(at, "next ›")
+        missing = state(at)
+        bar = [c.value for c in at.caption if c.value.startswith("ExaDiS is")]
+        paths.CAN_BUILD_EXADIS, paths.build_exadis = True, stand_in
+        at.run()
+        unbuilt = (*state(at), any(t.name == paths.EXADIS_THREAD for t in threading.enumerate()))
+        click(at, "Build ExaDiS")
+        started.wait(60)
+        at.run()
+        building = [(p.value, p.proto.text) for p in at.get("progress")], state(at)
+        done.set()
+        for thread in [t for t in threading.enumerate() if t.name == paths.EXADIS_THREAD]:
+            thread.join(60)
+        at.run()
+        failed = [e.value for e in at.error], state(at)
+    finally:
+        done.set()
+        paths.EXADIS_MODULE, paths.CAN_BUILD_EXADIS, paths.build_exadis = saved
+    results += [
+        check("without ExaDiS, its Run is off, and the Run step says why",
+              missing[0] and any("ExaDiS is not built" in w for w in missing[1]), missing),
+        check("... and so does the status below 🗑 clear all results, where the app does not "
+              "build ExaDiS (macOS), with no Build ExaDiS",
+              any("not built" in c for c in bar) and not missing[2], (bar, missing[2])),
+        check("where the app builds ExaDiS (Linux), Build ExaDiS, which the Run step names, and "
+              "no build before its press", unbuilt[0] and unbuilt[2] == ["Build ExaDiS"]
+              and any("Press Build ExaDiS" in w for w in unbuilt[1]) and not unbuilt[3], unbuilt),
+        check("at its press, the build starts: a bar shows its phase, percent, file and time, Run "
+              "is off, and the button goes",
+              building[0] == [(45, "Building ExaDiS: compiling, 45 %, exadis_pybind.cpp · "
+                                   "1.5 min so far")] and building[1][0] and not building[1][2],
+              building),
+        check("after a failed build, its error, and Build ExaDiS again",
+              any("ExaDiS was not built: no build in this test" in e for e in failed[0])
+              and failed[1][2] == ["Build ExaDiS"] and failed[1][0], failed),
+    ]
+
+    # a changed source file makes Streamlit load the app's modules again, with new classes:
+    # the session's spec, of the old ones, must still work (last, as job.running() is the old
+    # module's then)
+    at = page()
+    next(n for n in at.number_input if n.label == "Arm length / Lbox").set_value(0.2).run()
+    for name in [m for m in sys.modules if m == "common" or m.startswith("common.")]:
+        del sys.modules[name]
+    at.run()
+    arms = [n.value for n in at.number_input if n.label == "Arm length / Lbox"]
+    results += [
+        check("after the app's modules are loaded again, the page draws, with the changed value",
+              not at.exception and arms == [0.2], ([e.value for e in at.exception], arms)),
+    ]
+    return summary(results)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
