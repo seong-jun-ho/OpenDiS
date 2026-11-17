@@ -217,7 +217,7 @@ subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
     CHARACTER(LEN=256) :: full_f_stress_ready
     CHARACTER(LEN=256) :: full_f_running
     CHARACTER(LEN=256) :: full_f_stop
-    CHARACTER(LEN=256) :: full_f_segs, full_f_femstress
+    CHARACTER(LEN=256) :: full_f_segs, full_f_femstress, full_f_surfstress
 
 !   ---- DDM COMMON (vumat 과 같은 모양이어야 한다) ---------------------
     INTEGER, PARAMETER :: nseg_max = 20000
@@ -243,6 +243,7 @@ subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
     full_f_stop         = TRIM(foldername)//"/"//TRIM(f_stop_flag)//TRIM(f_flag)//".flag"
     full_f_segs         = TRIM(foldername)//"/Data_segs.txt"
     full_f_femstress    = TRIM(foldername)//"/../FEMSTRESS"
+    full_f_surfstress   = TRIM(foldername)//"/../SurfaceStress"
 
     SELECT CASE (lOp)
 
@@ -329,12 +330,36 @@ subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
                         ibest = j
                     END IF
                 END DO
+!               ABAQUS VUMAT 의 응력 순서는 (11,22,33,12,23,31) 인데
+!               FEMSTRESS 는 (xx,yy,zz,yz,xz,xy) 로 읽힌다 -> 전단을 바꿔 쓴다
                 WRITE(82,'(I8,1X,I8,6(1X,E16.8),1X,I2)') &
-                    sg_id(k,1), sg_id(k,2), (mp_sig(ibest,j), j=1,6), 1
+                    sg_id(k,1), sg_id(k,2), &
+                    mp_sig(ibest,1), mp_sig(ibest,2), mp_sig(ibest,3), &
+                    mp_sig(ibest,5), mp_sig(ibest,6), mp_sig(ibest,4), 1
             END DO
             CLOSE(82)
             PRINT *, "VEXTERNALDB: wrote FEMSTRESS for", n_seg_ddm, "segments from", &
                      n_mp_ddm, "integration points"
+        END IF
+
+!       ---- SurfaceStress: 핵생성이 보는 자리별 응력 --------------------
+!       make_nuc_sites 가 읽는 10 열 형식:
+!         id  x  y  z  S11 S22 S33 S23 S13 S12
+!       생산 DDM 에서 Set-SurfaceEl 이 사실상 전체 요소이므로 (STATUS 문서 참고)
+!       여기서도 적분점을 전부 자리로 쓴다.
+!       [2026-11-16] 종전에는 손으로 만든 5 줄 고정 파일이었다. 그 중 한 줄이
+!       (800,800,800) 에 3.55e+12 (다른 자리의 1 만 배) 라서 핵생성이 매 스텝
+!       같은 자리에서만 터졌다.
+        IF (n_mp_ddm .GT. 0) THEN
+            OPEN(UNIT=83, FILE=TRIM(full_f_surfstress), STATUS="REPLACE", ACTION="WRITE")
+            DO j = 1, n_mp_ddm
+                WRITE(83,'(I8,9(1X,E16.8))') &
+                    j, mp_xyz(j,1), mp_xyz(j,2), mp_xyz(j,3), &
+                    mp_sig(j,1), mp_sig(j,2), mp_sig(j,3), &
+                    mp_sig(j,5), mp_sig(j,6), mp_sig(j,4)
+            END DO
+            CLOSE(83)
+            PRINT *, "VEXTERNALDB: wrote SurfaceStress with", n_mp_ddm, "sites"
         END IF
 
         kInc = i_Array(i_int_kInc)
