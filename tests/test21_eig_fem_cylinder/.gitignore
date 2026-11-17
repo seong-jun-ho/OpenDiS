@@ -1,0 +1,6 @@
+# Coupling exchange files - written at run time by ABAQUS or by PyDiS.
+FEMSTRESS
+SurfaceStress
+Data_segs.txt
+*_bak
+output/

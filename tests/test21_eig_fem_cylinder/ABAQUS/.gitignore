@@ -1,0 +1,19 @@
+# ABAQUS run artifacts - regenerated on every run, never source.
+*.abq
+*.com
+*.dat
+*.env
+*.log
+*.mdl
+*.msg
+*.odb
+*.pac
+*.prt
+*.res
+*.sel
+*.sta
+*.stt
+*.023
+*.SMABulk
+*.flag
+*_bak
