@@ -1,0 +1,7 @@
+FEMSTRESS
+SurfaceStress
+output/
+stale_*/
+*.out
+*.err
+*_bak

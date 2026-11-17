@@ -349,7 +349,7 @@ subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
 !         id  x  y  z  S11 S22 S33 S23 S13 S12
 !       생산 DDM 에서 Set-SurfaceEl 이 사실상 전체 요소이므로 (STATUS 문서 참고)
 !       여기서도 적분점을 전부 자리로 쓴다.
-!       [2026-11-16] 종전에는 손으로 만든 5 줄 고정 파일이었다. 그 중 한 줄이
+!       (11/17/2026, junho) 종전에는 손으로 만든 5 줄 고정 파일이었다. 그 중 한 줄이
 !       (800,800,800) 에 3.55e+12 (다른 자리의 1 만 배) 라서 핵생성이 매 스텝
 !       같은 자리에서만 터졌다.
         IF (n_mp_ddm .GT. 0) THEN

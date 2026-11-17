@@ -41,14 +41,18 @@ class CalForce(CalForce_Base):
         ABAQUS_jobname = jobname_head + ABAQUS_input_filename
 
         # (08/25/2025, kyeongmi) Use wait_aba function which is located in abaqus/modules/wait_aba.py
-        wait_aba(foldername_ABAQUS, ABAQUS_jobname, num_cpus, flag_type = "stress_ready", flag_check_interval = 1)
+        # (11/17/2026, junho) ABAQUS_stress_ready.flag is our own test VUMAT's
+        # handshake.  The production VUMAT never writes it - it hands over
+        # by renaming ABAQUSworking%04d.flag - so waiting here blocks forever.
+        if state.get("_prod_protocol") is None:
+            wait_aba(foldername_ABAQUS, ABAQUS_jobname, num_cpus, flag_type = "stress_ready", flag_check_interval = 1)
         
-        ABAQUS_stress_ready = f"{foldername_ABAQUS}/ABAQUS_stress_ready.flag"
-        if os.path.exists(ABAQUS_stress_ready):
-            os.remove(ABAQUS_stress_ready)
-            print(f"remove {ABAQUS_stress_ready} file")
-        else:
-            print(f"{ABAQUS_stress_ready} does not exist after wait_aba (??)")
+            ABAQUS_stress_ready = f"{foldername_ABAQUS}/ABAQUS_stress_ready.flag"
+            if os.path.exists(ABAQUS_stress_ready):
+                os.remove(ABAQUS_stress_ready)
+                print(f"remove {ABAQUS_stress_ready} file")
+            else:
+                print(f"{ABAQUS_stress_ready} does not exist after wait_aba (??)")
         
 
         # (09/03/2025, kyeongmi) Add remote force to dislocation nodes (To be updated: UserStress function)
@@ -107,7 +111,7 @@ class CalForce(CalForce_Base):
     def CalEigstrainField(self, DM: DisNetManager, state: dict) -> dict:
         """ABAQUS 를 깨우기 전에 eigenstrain 입력이 제자리에 있는지 확인한다.
 
-        [2026-11-16] 종전에는 print 만 하는 빈 함수였고, 그래서 ABAQUS 가
+        (11/17/2026, junho) 종전에는 print 만 하는 빈 함수였고, 그래서 ABAQUS 가
         빈 eigenstrain 으로 돌았다. 이제 세그먼트 파일은 step_write_files 가
         ABAQUS 폴더에 Data_segs.txt 로 써 두고, VUMAT 이 그것을 읽어
         sigma = sigma_old + C : (d_eps - d_eps_p) 로 쓴다.
@@ -181,8 +185,13 @@ class CalForce(CalForce_Base):
         num_cpus = state.get("num_cpus")
         ABAQUS_jobname = jobname_head + ABAQUS_input_filename
 
-        # (08/18/2025, kyeongmi) Use wait_aba function which is located in abaqus/modules/wait_aba.py
-        wait_aba(foldername_ABAQUS, ABAQUS_jobname, num_cpus, flag_check_interval = 1)
+        # (11/17/2026, junho) With the production VUMAT the exchange is already done
+        # and FEMSTRESS written by the driver, so there is no
+        # ABAQUS_stress_ready.flag to wait for - that flag belongs to our
+        # own test VUMAT only.
+        if state.get("_prod_protocol") is None:
+            # (08/18/2025, kyeongmi) Use wait_aba function which is located in abaqus/modules/wait_aba.py
+            wait_aba(foldername_ABAQUS, ABAQUS_jobname, num_cpus, flag_check_interval = 1)
         
         # TODO: If stress ready, read stress from file and evaluate remote force
         #       (or read remote force directly from file?)

@@ -54,7 +54,7 @@ SUBROUTINE VUMAT(&
 !    INCLUDE 'VABA_PARAM.INC'
 	IMPLICIT DOUBLE PRECISION (a-h,o-z)
 	INTEGER, PARAMETER :: j_sys_Dimension = 2, n_vec_Length = 136, maxblk = n_vec_Length
-!	The above two lines are needed only for ABAQUS 2018! 
+!	The above two lines are needed only forvu ABAQUS 2018! 
 	DIMENSION JBLOCK(*), PROPS(NPROPS),DENSITY(*), COORDMP(*),&
 		CHARLENGTH(*), STRAININC(*),&
 		RELSPININC(*), TEMPOLD(*),&
@@ -157,17 +157,9 @@ SUBROUTINE VUAMP(&
 		tim = dble(time(iStepTime)) 
 		IF (tim .le. 0.0) THEN
 			ampValueNew = ampValueOld+0.004D0
-        ELSE
-            ampValueNew = ampValueOld+amp_increment
+		ELSE
+			ampValueNew = ampValueOld+amp_increment
 		END IF		
-
-		! write(*,*) tim, ampValueOld, ampValueNew
-
-		if (ampValueNew > 70.d0) then
-			ampValueNew = ampValueOld
-		endif
-
-
 		
 	END IF
 !
@@ -236,6 +228,14 @@ SUBROUTINE VUMATXTRARG(&
 	COMMON /sharedi/ n_segment, k_iteration
 	COMMON /sharedsurface/ surface_elements, num_elements
 	COMMON /elem_id/ Element_id
+!	[DDM restart fix 2026-08-27] one write per exchange - see the gate below.
+!	A new COMMON block on purpose: /sharedf/ and /sharedi/ are declared with
+!	DIFFERENT member lists in different subroutines here, so appending to them is
+!	not safe.  Double first, integers after, to keep the block naturally aligned.
+	DOUBLE PRECISION:: t_write_time
+	INTEGER:: k_exchange, k_written
+	LOGICAL:: ddm_do_write
+	COMMON /ddmgate/ t_write_time, k_exchange, k_written
 !    
     SAVE
 !====================================================================================
@@ -286,7 +286,6 @@ SUBROUTINE VUMATXTRARG(&
 !
 !
 !-------------------------------------------------------------------------
-		
 !	Obtain the rotation matrix P
 		P(1,1)=STATEOLD(iblock,4)
 		P(1,2)=STATEOLD(iblock,5)
@@ -460,7 +459,24 @@ SUBROUTINE VUMATXTRARG(&
 		!
     END DO
 	!
+!	[DDM restart fix 2026-08-27] Write the surface/stress block ONCE per exchange.
+!	The condition below alone is not enough after an Abaqus restart: VUMAT's
+!	TOTALTIME carries on from the restart point while VEXTERNALDB's clock starts
+!	again from zero, so t_nextstep is permanently behind and the gate never closes.
+!	Gate on the exchange counter instead: write on the first increment after each
+!	handshake, and let the remaining element blocks of that SAME increment through.
+!	On a fresh run the window is already one increment, so this changes nothing.
+	ddm_do_write = .FALSE.
 	IF((TOTALTIME>=t_nextstep).AND.(t_nextstep>0.0)) THEN
+		IF (k_written .NE. k_exchange) THEN
+			ddm_do_write = .TRUE.
+			k_written    = k_exchange
+			t_write_time = TOTALTIME
+		ELSE IF (TOTALTIME .EQ. t_write_time) THEN
+			ddm_do_write = .TRUE.
+		END IF
+	END IF
+	IF (ddm_do_write) THEN
 		CALL VGETOUTDIR(foldername, LENOUTDIR)
 		CALL VGETRANK(KPROCESSNUM)
 		foldername=foldername(1:LENOUTDIR)
@@ -1028,6 +1044,14 @@ SUBROUTINE vucharlength(&
 	COMMON /sharedsurface/ surface_elements, num_elements
 	COMMON /elem_id/ Element_id
 	COMMON /sharedoriginalnodes/ original_coordNodes	
+!	[DDM restart fix 2026-08-27] one write per exchange - see the gate below.
+!	A new COMMON block on purpose: /sharedf/ and /sharedi/ are declared with
+!	DIFFERENT member lists in different subroutines here, so appending to them is
+!	not safe.  Double first, integers after, to keep the block naturally aligned.
+	DOUBLE PRECISION:: t_write_time
+	INTEGER:: k_exchange, k_written
+	LOGICAL:: ddm_do_write
+	COMMON /ddmgate/ t_write_time, k_exchange, k_written
 !
 	IF (TOTALTIME.EQ.0.0) THEN
 		DO iBlock = 1, nblock
@@ -1180,7 +1204,6 @@ SUBROUTINE vucharlength(&
 		IF (element_within(iBlock) .EQ. 0) THEN
 			STATEOLD(iblock,14)=0
 		END IF
-!       SDV32 stores the accumulated plastic strain e_zz        
 		STATEOLD(iBlock,32)=STATEOLD(iBlock,32)+DT*STATEOLD(iBlock,17)
 		IF (STATEOLD(iblock,14).EQ.1) THEN
 			! Accumulation of equivalent plastic strain (based on von Mises yield function)
@@ -1194,7 +1217,24 @@ SUBROUTINE vucharlength(&
         charLength(iBlock,ncomp)=1.0
 	END DO		
 !	Print out the data for next ParaDiS run
+!	[DDM restart fix 2026-08-27] Write the surface/stress block ONCE per exchange.
+!	The condition below alone is not enough after an Abaqus restart: VUMAT's
+!	TOTALTIME carries on from the restart point while VEXTERNALDB's clock starts
+!	again from zero, so t_nextstep is permanently behind and the gate never closes.
+!	Gate on the exchange counter instead: write on the first increment after each
+!	handshake, and let the remaining element blocks of that SAME increment through.
+!	On a fresh run the window is already one increment, so this changes nothing.
+	ddm_do_write = .FALSE.
 	IF((TOTALTIME>=t_nextstep).AND.(t_nextstep>0.0)) THEN
+		IF (k_written .NE. k_exchange) THEN
+			ddm_do_write = .TRUE.
+			k_written    = k_exchange
+			t_write_time = TOTALTIME
+		ELSE IF (TOTALTIME .EQ. t_write_time) THEN
+			ddm_do_write = .TRUE.
+		END IF
+	END IF
+	IF (ddm_do_write) THEN
 		CALL VGETOUTDIR(foldername, LENOUTDIR)
 		CALL VGETRANK(KPROCESSNUM)
 		foldername=foldername(1:LENOUTDIR)
@@ -1523,9 +1563,6 @@ SUBROUTINE vucharlength(&
 !				rn_surface_old(1)=0.0
 !				rn_surface_old(2)=0.0
 !				rn_surface_old(3)=0.0
-				if (totalTime > 0.19347) then 
-					rn_id(i_rn,2)=7
-				endif
 				WRITE(16,"(I6.6, I6.2, E16.8E2, E16.8E2, E16.8E2)") rn_id(i_rn,1), rn_id(i_rn,2), rn_surface_old(1), rn_surface_old(2), rn_surface_old(3)
 			ELSEIF (rn_element(rn_id(i_rn,1)+1,1).EQ.0) THEN ! node not found in FEM domain
 				IF ((rn_id(i_rn,2).EQ.6)) THEN
@@ -1723,6 +1760,11 @@ SUBROUTINE vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
 	COMMON /sharedsurface/ surface_elements, num_elements
 	COMMON /sharednextdt/ LoadType, FEM_Du
 	COMMON /sharedoriginalnodes/ original_coordNodes
+!	[DDM restart fix 2026-08-27] bumped once per handshake below; the VUMAT gates
+!	use it to write exactly one increment per exchange.
+	DOUBLE PRECISION:: t_write_time
+	INTEGER:: k_exchange, k_written
+	COMMON /ddmgate/ t_write_time, k_exchange, k_written
 	kStep = i_Array(i_int_kStep)
 	kInc  = i_Array(i_int_kInc)
 	num_elements=i_Array(i_int_nTotalElements)
@@ -1731,6 +1773,12 @@ SUBROUTINE vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
 !	Start of the analysis
 	IF (lOp .eq. j_int_StartAnalysis) THEN
 		t_nextstep=0.0
+!	[DDM restart fix 2026-08-27] COMMON is not written to the Abaqus state file, so
+!	a restart starts a fresh process with these at zero anyway; set them explicitly
+!	so the first exchange is unambiguously "not yet written".
+		k_exchange   = 0
+		k_written    = -1
+		t_write_time = -1.0
 		CALL VGETOUTDIR(foldername, LENOUTDIR)
 		foldername=foldername(1:LENOUTDIR)
 !		Import surface elements flags
@@ -1759,6 +1807,7 @@ SUBROUTINE vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
 		write (filename_flag, "(I4.4)") KPROCESSNUM+1
 		! change ABAQUSworking.flag to Matlabworking.flag
 !		FILECHANGERESULT=SYSTEMQQ("move "//TRIM(foldername)//"\"//filename_ABAQUS_flag//TRIM(filename_flag)//".flag "//TRIM(foldername)//"\"//filename_Matlab_flag//TRIM(filename_flag)//".flag")
+!	(11/17/2026, junho) Windows "move" -> Linux "mv" for the flag handover.
 		FILECHANGERESULT=SYSTEMQQ("mv "//TRIM(foldername)//"/"//filename_ABAQUS_flag//TRIM(filename_flag)//".flag "//TRIM(foldername)//"/"//filename_Matlab_flag//TRIM(filename_flag)//".flag")
 		!
 		MATLABWORKING=1
@@ -1770,10 +1819,12 @@ SUBROUTINE vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
 			END IF
 		END DO
 		!
-		OPEN(16,file=TRIM(foldername)//"/"//filename_segs_num)
-		READ(16,*) n_segment, n_segment_final, t_step, EffSlip
-		CLOSE(16)
+		! [Modified by Dongwook Kim, 07/24/2026]
+		! Data_segs.txt now starts with a header line carrying the segment
+		! counts and step scalars; no separate Data_segs_num.txt is used.
+		! (was: OPEN filename_segs_num -> READ counts -> CLOSE, then OPEN filename_segs)
 		OPEN(16,file=TRIM(foldername)//"/"//filename_segs)
+		READ(16,*) n_segment, n_segment_final, t_step, EffSlip
 		DO K1=1,n_segment
 			READ(16,*) (node_id(K1,K2), K2=1,2), (rn1_old(K1,K2), K2=1,3), (rn2_old(K1,K2), K2=1,3), (rn1_new(K1,K2), K2=1,3),&
                        (rn2_new(K1,K2), K2=1,3),(tensor(1,K2), K2=1,3),(tensor(2,K2), K2=1,3),(tensor(3,K2), K2=1,3)
@@ -1805,27 +1856,36 @@ SUBROUTINE vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
 		END DO
 		CLOSE(16)
 ! import the segments from the latest cycle in ParaDiS 		
-		OPEN(16,file=TRIM(foldername)//"/"//filename_segs_final)
+! [Modified by Dongwook Kim, 07/24/2026]
+! Final-cycle segments = last n_segment_final rows of Data_segs.txt (merged Dis_Segs_all).
+! No separate Data_segs_final.txt is read; slice the tail of the already-imported arrays.
+! (was: OPEN filename_segs_final -> READ each final row)
 		DO K1=1,n_segment_final
-!			READ(16,*) (node_id_final(K1,K2), K2=1,2), (rn1_old_final(K1,K2), K2=1,3), (rn2_old_final(K1,K2), K2=1,3), (rn1_new_final(K1,K2), K2=1,3), (rn2_new_final(K1,K2), K2=1,3)
-			READ(16,*) (node_id_final(K1,K2), K2=1,2), (rn1_old_final(K1,K2), K2=1,3), (rn2_old_final(K1,K2), K2=1,3), &
-                       (rn1_new_final(K1,K2), K2=1,3),(rn2_new_final(K1,K2), K2=1,3),(tensor_final(1,K2), K2=1,3),&
-                       (tensor_final(2,K2),K2=1,3),(tensor_final(3,K2), K2=1,3)
+			K3=n_segment-n_segment_final+K1
+			node_id_final(K1,1)=node_id(K3,1)
+			node_id_final(K1,2)=node_id(K3,2)
+			DO K2=1,3
+				rn1_old_final(K1,K2)=rn1_old(K3,K2)
+				rn2_old_final(K1,K2)=rn2_old(K3,K2)
+				rn1_new_final(K1,K2)=rn1_new(K3,K2)
+				rn2_new_final(K1,K2)=rn2_new(K3,K2)
+			END DO
 		END DO
 		DO K1=1, n_segment_final
 			link_elem_id(K1,1)=0
 			link_elem_id(K1,2)=0
 		END DO
 		! Get rn
-		OPEN(16,file=TRIM(foldername)//"/"//filename_rn_num)
-		READ(16,*) num_rn
-		CLOSE(16)
+		! [Modified by Dongwook Kim, 07/27/2026] rn_matrix.txt now starts with a
+		! header line = node count (num_rn); nodes_num.txt is no longer read.
+		! (was: OPEN filename_rn_num -> READ num_rn -> CLOSE)
 		! Read loading condition. 1: dynamic (synchronization). 2: quasi-static
 		OPEN(16,file=TRIM(foldername)//"/"//filename_FEM_deltaU)
 		READ(16,*) LoadType, FEM_Du
 		CLOSE(16)
 		
 		OPEN(17,file=TRIM(foldername)//"/"//filename_rn_nodes)
+		READ(17,*) num_rn   ! header line (was nodes_num.txt)
 ! rn_id:    COL(1) node ID starts from 0, COL(2) flag, COL(3) num. neighbors	
 ! rn_nodes: COL(1-3): x, y, z coordinates		
 		DO K1=1,num_rn
@@ -1840,6 +1900,8 @@ SUBROUTINE vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
 		INQUIRE (FILE=TRIM(foldername)//"/"//filename_hold_stress_flag//"01.flag", EXIST=HOLD_ONE)
 		INQUIRE (FILE=TRIM(foldername)//"/"//filename_hold_stress_flag//"02.flag", EXIST=HOLD_TWO)
 		t_nextstep=time_now+t_step
+!	[DDM restart fix 2026-08-27] one exchange has just been handed to the VUMAT.
+		k_exchange=k_exchange+1
 	END IF
 !
 	RETURN

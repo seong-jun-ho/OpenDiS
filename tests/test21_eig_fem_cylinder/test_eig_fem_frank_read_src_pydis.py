@@ -83,8 +83,11 @@ def main():
     sim = SimulationDriver(calforce=calforce, mobility=mobility, timeint=timeint,
                           topology=topology, collision=collision, remesh=remesh, vis=vis,
                           remote_stress=remote_stress,
-                          surface_topology=surface_topology, nucleation = nucleation, 
-                          state=state, max_step=30, loading_mode="stress",
+                          surface_topology=surface_topology,
+                          # (11/17/2026, junho) 검증 런: 핵생성 끄고 FR 소스 하나만.
+                          # 소성변형률이 제대로 가는지만 본다.
+                          nucleation=None,
+                          state=state, max_step=20, loading_mode="stress",
                           applied_stress=np.array([0.0, 0.0, 0.0, 0.0, 4.0e10, 0.0]),
                           print_freq=1, plot_freq=1, plot_pause_seconds=0.01,
                           write_freq=1, write_dir='output', save_state=False)

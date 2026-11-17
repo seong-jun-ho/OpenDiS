@@ -1,0 +1,30 @@
+# Generated from the mesh by ../gen_prod_inputs.py
+surface_elements.txt
+OriginalCoordNodes.txt
+# Written at run time
+rn_matrix.txt
+Data_segs.txt
+Output_stress*.txt
+Surface_stress*.txt
+Output_*.txt
+*.flag
+# ABAQUS run artifacts
+*.abq
+*.com
+*.dat
+*.env
+*.lck
+*.log
+*.mdl
+*.msg
+*.odb
+*.pac
+*.prt
+*.res
+*.sel
+*.sta
+*.stt
+*.simlog
+*.023
+*.SMABulk
+*_bak

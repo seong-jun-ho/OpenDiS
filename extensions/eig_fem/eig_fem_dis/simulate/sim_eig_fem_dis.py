@@ -38,6 +38,7 @@ class SimulationDriver(SimulateNetwork):
                  remote_stress=None, remote_force=None,
                  surface_mobility=None, surface_topology=None,
                  nucleation=None, 
+                 prod_protocol=None,
                  **kwargs) -> None:
         super().__init__(state, **kwargs)
 
@@ -46,6 +47,12 @@ class SimulationDriver(SimulateNetwork):
         self.surface_mobility = surface_mobility
         self.surface_topology = surface_topology
         self.nucleation = nucleation
+        # (11/17/2026, junho) Set this to drive the *production* ParaDiS VUMAT
+        # (eig_fem_dis.prod_protocol.ProdProtocol).  None keeps the
+        # original ABAQUS_pause/running flag path untouched.
+        self.prod_protocol = prod_protocol
+        if prod_protocol is not None:
+            prod_protocol.init_flags()
         
         # Launch abaqus
         # or put at the beginning of test case
@@ -57,6 +64,18 @@ class SimulationDriver(SimulateNetwork):
                                   runs ABAQUS to calculate stress field. 
         """
         print("------step_begin-------")
+        if self.prod_protocol is not None:
+            # Production VUMAT path: Data_segs.txt and rn_matrix.txt were written
+            # and the turn handed over at the end of the previous step, so here we
+            # only wait for ABAQUS and turn its ELEMENT stress into the SEGMENT
+            # stress that calforce reads.
+            istep = state['istep']
+            if istep > 0:
+                pp = self.prod_protocol
+                if not pp.wait_for_dd_turn():
+                    raise RuntimeError("prod_protocol: ABAQUS did not hand back")
+                pp.write_FEMSTRESS(DM, pp.read_element_stress())
+            return
         if self.remote_stress != None:
             istep = state['istep']
             if istep == 0: # skip the first step
@@ -104,7 +123,7 @@ class SimulationDriver(SimulateNetwork):
 
         # 4) call loopgenerate
         for k in sel:
-            # [2026-11-16] 새 루프 노드에 old 좌표를 달아 준다.
+            # (11/17/2026, junho) 새 루프 노드에 old 좌표를 달아 준다.
             # save_old_nodes 는 step_integrate 에서 이미 돌았으므로, 여기서
             # 생기는 노드는 시작 위치가 없다. ParaDiS 는 그런 노드의 old 좌표를
             # 루프 중심에 둔다 (src/LoopGenerate_FCC.cc:131-133):
@@ -132,7 +151,7 @@ class SimulationDriver(SimulateNetwork):
     def step_integrate(self, DM: DisNetManager, state: dict):
         """step_integrate: invoked for time-integration at each time step
         """
-        # [2026-11-16] upstream (1573301, 537dd5b) 이 PyDiS 에 save_old_nodes /
+        # (11/17/2026, junho) upstream (1573301, 537dd5b) 이 PyDiS 에 save_old_nodes /
         # plastic_strain 을 구현했다. 옛 위치는 state['oldpos_dict'] 에 **태그로**
         # 저장되므로 remesh/collision 이 노드를 재색인해도 대응이 유지된다.
         self.save_old_nodes(DM, state)
@@ -185,7 +204,7 @@ class SimulationDriver(SimulateNetwork):
                                              rn_old/rn_new 로 다시 만든다)
           dyad = outer(nhat, b)
 
-        [2026-11-16] 옛 위치는 upstream 의 save_old_nodes 가 넣어 준
+        (11/17/2026, junho) 옛 위치는 upstream 의 save_old_nodes 가 넣어 준
         state['oldpos_dict'] (태그 -> 위치) 에서 가져온다.
         예전에는 R_old = R - b 로 가짜를 넣고 있었다.
         """
@@ -200,8 +219,28 @@ class SimulationDriver(SimulateNetwork):
                 "write_Dis_Segs: state['oldpos_dict'] 가 없다. "
                 "step_integrate 가 save_old_nodes 를 부르는지 확인할 것.")
 
-        r1_old = old_positions_for(tags1, oldpos)
-        r2_old = old_positions_for(tags2, oldpos)
+        # (11/17/2026, junho) 토폴로지 연산(Handle_CutSeg, collision, remesh)이
+        # save_old_nodes 뒤에 만든 노드는 시작 위치가 없다. 막 생긴 노드는
+        # 이 스텝에 쓸고 간 것이 없으므로 옛 위치 = 현재 위치로 둔다.
+        # 몇 개인지 반드시 찍는다 - 조용히 넘어갈 근사가 아니다.
+        def _old_or_current(tags, now):
+            out = np.empty((len(tags), 3), dtype=float)
+            missing = 0
+            for i, t in enumerate(tags):
+                key = tuple(t)
+                if key in oldpos:
+                    out[i] = oldpos[key]
+                else:
+                    out[i] = now[i]
+                    missing += 1
+            return out, missing
+
+        r1_old, m1 = _old_or_current(tags1, r1)
+        r2_old, m2 = _old_or_current(tags2, r2)
+        if m1 + m2:
+            print("write_Dis_Segs: %d node slots had no start-of-step position "
+                  "(created by topology after save_old_nodes); "
+                  "treated as not having swept" % (m1 + m2))
 
         # segment_dyads 와 같은 최소상 순서
         r2 = np.asarray(cell.closest_image(Rref=r1, R=r2))
@@ -261,12 +300,32 @@ class SimulationDriver(SimulateNetwork):
             # Here we call a new function to print out the data to Dis_Segs
             self.write_Dis_Segs(DM, os.path.join(self.write_dir,
                                 f'Dis_Segs_{istep}'), state)
-            # [2026-11-16] ABAQUS 가 읽을 자리에도 같은 내용을 둔다.
+            # (11/17/2026, junho) ABAQUS 가 읽을 자리에도 같은 내용을 둔다.
             # 새 VUMAT 이 vexternaldb(StartIncrement) 에서 Data_segs.txt 를
             # 읽어 eigenstrain 을 실제로 뺀다.
             aba = state.get('foldername_ABAQUS', None)
             if aba:
-                self.write_Dis_Segs(DM, os.path.join(aba, 'Data_segs.txt'), state)  # create with the step number
+                self.write_Dis_Segs(DM, os.path.join(aba, 'Data_segs.txt'), state)
+                # (11/17/2026, junho) Production VUMAT also wants the node list, and
+                # the turn is handed back by renaming the flag (MATLAB does the
+                # same at DDM_Linux_v0.m:379).
+                if self.prod_protocol is not None:
+                    self.prod_protocol.write_rn_matrix(DM, state)
+                    self.prod_protocol.release_to_abaqus()
+
+            # (11/17/2026, junho) 검증용: PyDiS 가 자체 계산한 dEp 를 남긴다.
+            # Dis_Segs 에서 손으로 계산한 값과 대조하면, 우리가 FEM 으로 보낸
+            # 소성변형률이 맞는지 **독립 경로 두 개**로 확인할 수 있다.
+            dep = state.get('dEp', None)
+            if dep is not None:
+                p = os.path.join(self.write_dir, 'dEp_pydis.csv')
+                if not os.path.exists(p):
+                    with open(p, 'w') as f:
+                        f.write('step,dEp_xx,dEp_yy,dEp_zz,dEp_yz,dEp_xz,dEp_xy\n')
+                with open(p, 'a') as f:
+                    f.write('%d,' % istep
+                            + ','.join('%.10e' % v for v in np.asarray(dep).ravel())
+                            + '\n')  # create with the step number
 
     #def my_function(self, DM: DisNetManager, state: dict):
     #    print("my_new_function is called")
