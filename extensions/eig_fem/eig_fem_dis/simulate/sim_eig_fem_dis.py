@@ -17,6 +17,8 @@ from pydis.simulate.sim_disnet import SimulateNetwork
 from pydis.timeint.timeint_disnet import TimeIntegration
 from pydis.visualize.vis_disnet import VisualizeNetwork
 from framework.disnet_manager import DisNetManager
+from pydis.util.plastic_strain import (segment_positions, old_positions_for,
+                                       swept_area_vector)
 
 try:
     import matplotlib.pyplot as plt
@@ -108,13 +110,16 @@ class SimulationDriver(SimulateNetwork):
     def step_integrate(self, DM: DisNetManager, state: dict):
         """step_integrate: invoked for time-integration at each time step
         """
-        #self.save_old_nodes(DM, state)
+        # [2026-11-16] upstream (1573301, 537dd5b) 이 PyDiS 에 save_old_nodes /
+        # plastic_strain 을 구현했다. 옛 위치는 state['oldpos_dict'] 에 **태그로**
+        # 저장되므로 remesh/collision 이 노드를 재색인해도 대응이 유지된다.
+        self.save_old_nodes(DM, state)
 
         print("------step_integrate-------")
         state = self.calforce.NodeForce(DM, state)
         state = self.mobility.Mobility(DM, state)
         state = self.timeint.Update(DM, state)
-        #self.plastic_strain(DM, state)
+        self.plastic_strain(DM, state)
         # calculate eigstrain field
         # call function in the remote_stress module
 
@@ -143,81 +148,67 @@ class SimulationDriver(SimulateNetwork):
     # For data communication, we need to keep the same dislocation network in plastic strain and rn_links
     # It requires to write a files(Dis_Segs) after topology operations.
     # We are waiting for the update which could export old_position of nodes.
-    def write_Dis_Segs(self, DM: DisNetManager, filename_Dis_Segs: str):
+    def write_Dis_Segs(self, DM: DisNetManager, filename_Dis_Segs: str,
+                       state: dict = None):
         """Write DisNetManager data to 'Dis_Segs' file
-           [Format] NodeID, NBBID, Node_old_position, NBR_old_position, Node_current_position, NBR_current_position, B, N
+
+        [Format] VUMAT (VUMAT_DDM_multiple_DDcycle.for:1826-1829) 이 읽는 그대로:
+          line 1 : n_segment  n_segment_final  t_step  EffSlip
+          rows   : NodeID NbrID | r1_old(3) r2_old(3) | r1_new(3) r2_new(3) | dyad(9)
+
+        ParaDiS 의 src/WriteArms.cc 와 같은 규약이다:
+          e    = r2_new - r1_old ,  h = r1_new - r2_old
+          n    = e x h                      (쓸고 간 사각형의 법선)
+          nhat = n / |n|                    (**단위벡터**. 크기는 VUMAT 이
+                                             rn_old/rn_new 로 다시 만든다)
+          dyad = outer(nhat, b)
+
+        [2026-11-16] 옛 위치는 upstream 의 save_old_nodes 가 넣어 준
+        state['oldpos_dict'] (태그 -> 위치) 에서 가져온다.
+        예전에는 R_old = R - b 로 가짜를 넣고 있었다.
         """
-        # This is copied from disnet.py (get_segs_data_with_positions)
-        G = DM.get_disnet(DisNet)
-        _, ntags = G.get_nodes_data()
-        Nseg = G.num_segments()
-        nodeids = np.zeros((Nseg, 2), dtype=int)
-        tag1 = np.zeros((Nseg, 2), dtype=int)
-        tag2 = np.zeros((Nseg, 2), dtype=int)
-        burgers = np.zeros((Nseg, 3))
-        planes = np.zeros((Nseg, 3))
-        R1 = np.zeros((Nseg, 3))
-        R2 = np.zeros((Nseg, 3))
+        cell = DM.cell
+        data = DM.export_data()
+        tags1, tags2, r1, r2, burgers = segment_positions(data)
+        Nseg = len(burgers)
 
-        R1_old = np.zeros((Nseg, 3))
-        R2_old = np.zeros((Nseg, 3))
-        dyad_flat = np.zeros((Nseg, 9))
+        oldpos = None if state is None else state.get('oldpos_dict')
+        if oldpos is None:
+            raise ValueError(
+                "write_Dis_Segs: state['oldpos_dict'] 가 없다. "
+                "step_integrate 가 save_old_nodes 를 부르는지 확인할 것.")
 
-        i = 0
-        for (source, target), edge_attr in G.all_segments_dict().items():
-            nodeids[i,:] = ntags[source], ntags[target]
-            tag1[i,:] = source
-            tag2[i,:] = target
-            burgers[i,:] = edge_attr.burg_vec_from(source).copy()
-            planes[i,:] = getattr(edge_attr, "plane_normal", np.zeros(3)).copy()
-            r1_local = G.nodes(source).R
-            r2_local = G.nodes(target).R
-            # apply PBC
-            r2_local = G.cell.closest_image(Rref=r1_local, R=r2_local)
-            R1[i,:] = r1_local
-            R2[i,:] = r2_local
-            
-            # (08/19/2025, kyeongmi) For testing, I assumed the old position as the current position shifted by -b
-            R1_old[i,:] = R1[i,:] - burgers[i,:]
-            R2_old[i,:] = R2[i,:] - burgers[i,:]
+        r1_old = old_positions_for(tags1, oldpos)
+        r2_old = old_positions_for(tags2, oldpos)
 
-            dyad = np.outer(planes[i,:], burgers[i,:])
-            dyad_flat[i,:] = dyad.ravel()
+        # segment_dyads 와 같은 최소상 순서
+        r2 = np.asarray(cell.closest_image(Rref=r1, R=r2))
+        r3 = np.asarray(cell.closest_image(Rref=r1, R=r1_old))
+        r4 = np.asarray(cell.closest_image(Rref=r3, R=r2_old))
 
-            i += 1
-        '''
+        Sn = swept_area_vector(r1, r2, r3, r4)
+        nrm = np.linalg.norm(Sn, axis=1, keepdims=True)
+        nhat = np.divide(Sn, nrm, out=np.zeros_like(Sn), where=(nrm > 0.0))
+        dyad = nhat[:, :, None] * burgers[:, None, :]
+
+        n_moved = int((nrm > 0.0).sum())
+        print("write_Dis_Segs: %d segments, %d swept a non-zero area"
+              % (Nseg, n_moved))
+
+        t_step = float(state.get('dt', 0.0))
+        eff_slip = float(state.get('EffSlip', 0.0))
+
+        nid1 = np.asarray(tags1, dtype=int).reshape(-1, 2)[:, 1]
+        nid2 = np.asarray(tags2, dtype=int).reshape(-1, 2)[:, 1]
+
         with open(filename_Dis_Segs, "w") as file:
+            # 아직 서브스텝 병합이 없으므로 final block = 전체
+            file.write("%d %d %.8e %.8e\n" % (Nseg, Nseg, t_step, eff_slip))
             for i in range(Nseg):
-                file.write("%d %d %e %e %e %e %e %e\n"%(nodeids[i,0], nodeids[i,1],
-                            R1[i,0], R1[i,1], R1[i,2],
-                            R2[i,0], R2[i,1], R2[i,2]))
-        '''
-        '''
-        with open(filename_Dis_Segs, "w") as file:
-            for i in range(Nseg):
-                file.write("%d %d %e %e %e %e %e %e %e %e %e %e %e %e %e %e %e %e %e %e %e %e %e\n"
-                            %(nodeids[i,0], nodeids[i,1],
-                            R1[i,0], R1[i,1], R1[i,2], R2[i,0], R2[i,1], R2[i,2],
-                            R1_old[i,0], R1_old[i,1], R1_old[i,2], R2_old[i,0], R2_old[i,1], R2_old[i,2],
-                            dyad_flat[i,0], dyad_flat[i,1], dyad_flat[i,2],
-                            dyad_flat[i,3], dyad_flat[i,4], dyad_flat[i,5],
-                            dyad_flat[i,6], dyad_flat[i,7], dyad_flat[i,8]))
-        '''
-        # (08/19/2025, kyeongmi) Write Dis_Segs file with desired format
-        with open(filename_Dis_Segs, "w") as file:
-            for i in range(Nseg):
-                values = [
-                    nodeids[i,0], nodeids[i,1],
-                    R1[i,0], R1[i,1], R1[i,2],
-                    R2[i,0], R2[i,1], R2[i,2],
-                    R1_old[i,0], R1_old[i,1], R1_old[i,2],
-                    R2_old[i,0], R2_old[i,1], R2_old[i,2],
-                    *dyad_flat[i,:]   # 9 elements
-                ]
-                file.write(
-                    f"{values[0]:d} {values[1]:d} " + 
-                    " ".join(f"{v:.6e}" for v in values[2:]) + "\n"
-                )
+                vals = list(r3[i]) + list(r4[i]) + list(r1[i]) + list(r2[i]) \
+                       + list(dyad[i].ravel())
+                file.write("%d %d " % (nid1[i], nid2[i])
+                           + " ".join("%.6e" % v for v in vals) + "\n")
         print("Dis_Segs file has been written")
 
     def read_Dis_Segs(self, filename_Dis_Segs: str):
@@ -246,7 +237,7 @@ class SimulationDriver(SimulateNetwork):
                     with open(os.path.join(self.write_dir, f'state_{istep}.pickle'), 'wb') as file:
                         pickle.dump(state, file)
             # Here we call a new function to print out the data to Dis_Segs
-            self.write_Dis_Segs(DM, os.path.join(self.write_dir, f'Dis_Segs_{istep}'))  # create with the step number
+            self.write_Dis_Segs(DM, os.path.join(self.write_dir, f'Dis_Segs_{istep}'), state)  # create with the step number
 
     #def my_function(self, DM: DisNetManager, state: dict):
     #    print("my_new_function is called")
