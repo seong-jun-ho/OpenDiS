@@ -259,7 +259,14 @@ class SimulationDriver(SimulateNetwork):
                     with open(os.path.join(self.write_dir, f'state_{istep}.pickle'), 'wb') as file:
                         pickle.dump(state, file)
             # Here we call a new function to print out the data to Dis_Segs
-            self.write_Dis_Segs(DM, os.path.join(self.write_dir, f'Dis_Segs_{istep}'), state)  # create with the step number
+            self.write_Dis_Segs(DM, os.path.join(self.write_dir,
+                                f'Dis_Segs_{istep}'), state)
+            # [2026-11-16] ABAQUS 가 읽을 자리에도 같은 내용을 둔다.
+            # 새 VUMAT 이 vexternaldb(StartIncrement) 에서 Data_segs.txt 를
+            # 읽어 eigenstrain 을 실제로 뺀다.
+            aba = state.get('foldername_ABAQUS', None)
+            if aba:
+                self.write_Dis_Segs(DM, os.path.join(aba, 'Data_segs.txt'), state)  # create with the step number
 
     #def my_function(self, DM: DisNetManager, state: dict):
     #    print("my_new_function is called")

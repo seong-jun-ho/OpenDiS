@@ -1,4 +1,31 @@
 !DIR$ FREEFORM
+!=======================================================================
+!  test21 용 DDM VUMAT  (2026-11-16)
+!
+!  종전 파일은 플래그만 주고받는 **순수 탄성** 210 줄짜리였다.
+!  여기서 고리의 나머지 절반을 닫는다:
+!
+!    (1) OpenDiS 가 쓴 Data_segs.txt 를 읽어 eigenstrain 을 실제로 뺀다
+!          sigma = sigma_old + C : (d_eps - d_eps_p)
+!    (2) 적분점 응력을 모아 FEMSTRESS 를 쓴다
+!          -> OpenDiS 의 ReadRemoteStress 가 그걸 읽는다
+!          (종전에는 손으로 쓴 5 줄 상수 파일이었다)
+!
+!  규약은 우리 ParaDiS DDM VUMAT (VUMAT_DDM_multiple_DDcycle.for) 에서 가져왔다:
+!
+!    common_omega = t_step * PI * EffSlip^2 / burgers      (:1085)
+!    travel       = |r1n + r2n - r1o - r2o| / 2            (:1134-1137)
+!    temp_omega   = common_omega / travel                  (:1139)
+!    d_eps_p     += de_p / temp_omega                      (:1187-1192)
+!  좌표는 b 단위이므로 burgers = 1.0 (원본 :988 과 같다).
+!
+!  [원본과 다른 점 — 일부러 그렇게 했다]
+!  원본은 한 DD 스텝 안의 ABAQUS 증분마다 세그먼트 위치를 보간해 활성부피를
+!  움직여 가며 조금씩 더한다. 여기서는 활성부피를 sweep 중간 위치에 고정하고
+!  증분의 시간 몫 (dt/t_step) 으로 나눠 더한다. 그러면 한 DD 스텝에 더해진
+!  총량이 증분 크기와 무관하게 정확히 같아져 검증하기 쉽다.
+!=======================================================================
+
 subroutine vumat(&
     nblock, ndir, nshr, nstatev, nfieldv, nprops, lanneal, &
     stepTime, totalTime, dt, cmname, coordMp, charLength, &
@@ -9,9 +36,6 @@ subroutine vumat(&
     stressNew, stateNew, enerInternNew, enerInelasNew)
 
     include 'vaba_param.inc'
-    !IMPLICIT DOUBLE PRECISION (a-h,o-z)
-      
-    !Elastic material model only
 
     dimension props(nprops), density(nblock), &
         coordMp(nblock,*), charLength(*), strainInc(nblock,ndir+nshr), &
@@ -26,35 +50,134 @@ subroutine vumat(&
     character*80 cmname
     parameter (zero=0.0d0, one=1.0d0)
 
-    !Read properties: Young's modulus and Poisson's ratio
-    E = props(1)
-    NU = props(2)
+!   ---- DDM: 세그먼트 (Data_segs.txt 에서) -----------------------------
+    INTEGER, PARAMETER :: nseg_max = 20000
+    DOUBLE PRECISION :: sg_old(nseg_max,6), sg_new(nseg_max,6)
+    DOUBLE PRECISION :: sg_dep(nseg_max,6), sg_trv(nseg_max)
+    DOUBLE PRECISION :: ddm_tstep, ddm_eff
+    INTEGER :: sg_id(nseg_max,2), n_seg_ddm
+    COMMON /ddmsegd/ sg_old, sg_new, sg_dep, sg_trv, ddm_tstep, ddm_eff
+    COMMON /ddmsegi/ sg_id, n_seg_ddm
 
-    !Compute Lame constants
-    G = E / (2.0d0 * (1.0d0 + NU))
+!   ---- DDM: 적분점 보관 (FEMSTRESS 용) --------------------------------
+    INTEGER, PARAMETER :: nmp_max = 300000
+    DOUBLE PRECISION :: mp_xyz(nmp_max,3), mp_sig(nmp_max,6)
+    INTEGER :: n_mp_ddm
+    COMMON /ddmmpd/ mp_xyz, mp_sig
+    COMMON /ddmmpi/ n_mp_ddm
+
+    DOUBLE PRECISION :: dep(6), pmid(3), a(3), v(3), w(3)
+    DOUBLE PRECISION :: alen, proj, rperp, frac, omega, PI
+    INTEGER :: i, j, k, ii
+
+    PI = 3.14159265358979d0
+
+    E  = props(1)
+    NU = props(2)
+    G      = E / (2.0d0 * (1.0d0 + NU))
     LAMBDA = E * NU / ((1.0d0 + NU)*(1.0d0 - 2.0d0 * NU))
+
+!   한 DD 스텝에서 이 증분이 차지하는 시간 몫.
+!   이것으로 나눠 더하므로 증분을 쪼개도 총량이 같다.
+    frac = 1.0d0
+    IF (ddm_tstep .GT. 0.0d0) frac = dt / ddm_tstep
+    IF (frac .GT. 1.0d0) frac = 1.0d0
 
     do i = 1, nblock
 
-        !Compute strain trace (volumetric strain)
-        trace_eps = strainInc(i,1) + strainInc(i,2) + strainInc(i,3)
+!       ---- eigenstrain 누적: 이 적분점을 쓸고 간 세그먼트들 -----------
+        do j = 1, 6
+            dep(j) = zero
+        end do
 
-        !Compute stress update: sigma = sigma_old + lambda*trace*I + 2G*eps
-        stressNew(i,1) = stressOld(i,1) + LAMBDA*trace_eps + 2.0d0*G*strainInc(i,1)
-        stressNew(i,2) = stressOld(i,2) + LAMBDA*trace_eps + 2.0d0*G*strainInc(i,2)
-        stressNew(i,3) = stressOld(i,3) + LAMBDA*trace_eps + 2.0d0*G*strainInc(i,3)
-        stressNew(i,4) = stressOld(i,4) + 2.0d0* G * strainInc(i,4)
-        if (nshr .ge. 2) stressNew(i,5) = stressOld(i,5) + 2.0d0 * G * strainInc(i,5)
-        if (nshr .ge. 3) stressNew(i,6) = stressOld(i,6) + 2.0d0 * G * strainInc(i,6)
+        IF (n_seg_ddm .GT. 0 .AND. ddm_eff .GT. 0.0d0) THEN
+            do k = 1, n_seg_ddm
+                IF (sg_trv(k) .LE. 0.0d0) CYCLE
 
-        !Copy state variables unchanged
+!               sweep 중간 위치의 세그먼트 (a -> a+v)
+                do ii = 1, 3
+                    a(ii) = 0.5d0*(sg_old(k,ii)   + sg_new(k,ii))
+                    v(ii) = 0.5d0*(sg_old(k,ii+3) + sg_new(k,ii+3)) - a(ii)
+                    w(ii) = coordMp(i,ii) - a(ii)
+                end do
+
+                alen = sqrt(v(1)*v(1) + v(2)*v(2) + v(3)*v(3))
+                IF (alen .GT. 0.0d0) THEN
+                    proj = (w(1)*v(1) + w(2)*v(2) + w(3)*v(3)) / (alen*alen)
+                    IF (proj .LT. 0.0d0) proj = 0.0d0
+                    IF (proj .GT. 1.0d0) proj = 1.0d0
+                ELSE
+                    proj = 0.0d0
+                END IF
+
+                rperp = 0.0d0
+                do ii = 1, 3
+                    rperp = rperp + (w(ii) - proj*v(ii))**2
+                end do
+                rperp = sqrt(rperp)
+
+!               활성부피: 세그먼트에서 EffSlip 이내인 원통
+                IF (rperp .LE. ddm_eff) THEN
+!                   omega = common_omega / travel      (원본 :1139)
+                    omega = ddm_tstep * PI * ddm_eff * ddm_eff / sg_trv(k)
+                    IF (omega .GT. 0.0d0) THEN
+                        do j = 1, 6
+                            dep(j) = dep(j) + frac * sg_dep(k,j) / omega
+                        end do
+                    END IF
+                END IF
+            end do
+        END IF
+
+!       ---- 응력 갱신:  sigma = sigma_old + C : (d_eps - d_eps_p) ------
+        trace_eps = (strainInc(i,1) - dep(1)) &
+                  + (strainInc(i,2) - dep(2)) &
+                  + (strainInc(i,3) - dep(3))
+
+        stressNew(i,1) = stressOld(i,1) + LAMBDA*trace_eps &
+                       + 2.0d0*G*(strainInc(i,1) - dep(1))
+        stressNew(i,2) = stressOld(i,2) + LAMBDA*trace_eps &
+                       + 2.0d0*G*(strainInc(i,2) - dep(2))
+        stressNew(i,3) = stressOld(i,3) + LAMBDA*trace_eps &
+                       + 2.0d0*G*(strainInc(i,3) - dep(3))
+        stressNew(i,4) = stressOld(i,4) + 2.0d0*G*(strainInc(i,4) - dep(4))
+        if (nshr .ge. 2) stressNew(i,5) = stressOld(i,5) &
+                       + 2.0d0*G*(strainInc(i,5) - dep(5))
+        if (nshr .ge. 3) stressNew(i,6) = stressOld(i,6) &
+                       + 2.0d0*G*(strainInc(i,6) - dep(6))
+
         do j = 1, nstatev
             stateNew(i,j) = stateOld(i,j)
         end do
+!       누적 소성변형률을 SDV 1-6 에 남긴다 (있으면)
+        IF (nstatev .GE. 6) THEN
+            do j = 1, 6
+                stateNew(i,j) = stateOld(i,j) + dep(j)
+            end do
+        END IF
+
+!       ---- FEMSTRESS 용으로 적분점 보관 -------------------------------
+        IF (n_mp_ddm .LT. nmp_max) THEN
+            n_mp_ddm = n_mp_ddm + 1
+            mp_xyz(n_mp_ddm,1) = coordMp(i,1)
+            mp_xyz(n_mp_ddm,2) = coordMp(i,2)
+            mp_xyz(n_mp_ddm,3) = coordMp(i,3)
+            do j = 1, 6
+                mp_sig(n_mp_ddm,j) = 0.0d0
+            end do
+            mp_sig(n_mp_ddm,1) = stressNew(i,1)
+            mp_sig(n_mp_ddm,2) = stressNew(i,2)
+            mp_sig(n_mp_ddm,3) = stressNew(i,3)
+            mp_sig(n_mp_ddm,4) = stressNew(i,4)
+            if (nshr .ge. 2) mp_sig(n_mp_ddm,5) = stressNew(i,5)
+            if (nshr .ge. 3) mp_sig(n_mp_ddm,6) = stressNew(i,6)
+        END IF
+
     end do
 
     return
 end subroutine vumat
+
 
 subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
     USE IFPORT
@@ -63,7 +186,7 @@ subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
     INTEGER            :: i_Array(niArray)
     DOUBLE PRECISION   :: r_Array(nrArray)
     LOGICAL            :: FILEEXISTANCE
-    LOGICAL            :: STOP_EXISTS
+    LOGICAL            :: STOP_EXISTS, SEGS_EXIST
     INTEGER            :: kInc
 !  i_Array index map
     INTEGER, PARAMETER :: i_int_nTotalNodes    = 1
@@ -83,8 +206,8 @@ subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
 !  r_Array indices
     INTEGER, PARAMETER :: i_flt_TotalTime=1, i_flt_StepTime=2, i_flt_dTime=3
 !  flag
-	CHARACTER(*), PARAMETER :: f_stress_ready_flag = "ABAQUS_stress_ready"
-	CHARACTER(*), PARAMETER :: f_pause_flag = "ABAQUS_pause"
+    CHARACTER(*), PARAMETER :: f_stress_ready_flag = "ABAQUS_stress_ready"
+    CHARACTER(*), PARAMETER :: f_pause_flag = "ABAQUS_pause"
     CHARACTER(*), PARAMETER :: f_running_flag = "ABAQUS_running"
     CHARACTER(*), PARAMETER :: f_stop_flag = "ABAQUS_stop"
 !   [CAUTION] foldername should be ABSOLUTE PATH !!!!
@@ -94,14 +217,41 @@ subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
     CHARACTER(LEN=256) :: full_f_stress_ready
     CHARACTER(LEN=256) :: full_f_running
     CHARACTER(LEN=256) :: full_f_stop
+    CHARACTER(LEN=256) :: full_f_segs, full_f_femstress
 
-    full_f_pause = TRIM(foldername)//"/"//TRIM(f_pause_flag)//TRIM(f_flag)//".flag"
+!   ---- DDM COMMON (vumat 과 같은 모양이어야 한다) ---------------------
+    INTEGER, PARAMETER :: nseg_max = 20000
+    DOUBLE PRECISION :: sg_old(nseg_max,6), sg_new(nseg_max,6)
+    DOUBLE PRECISION :: sg_dep(nseg_max,6), sg_trv(nseg_max)
+    DOUBLE PRECISION :: ddm_tstep, ddm_eff
+    INTEGER :: sg_id(nseg_max,2), n_seg_ddm
+    COMMON /ddmsegd/ sg_old, sg_new, sg_dep, sg_trv, ddm_tstep, ddm_eff
+    COMMON /ddmsegi/ sg_id, n_seg_ddm
+
+    INTEGER, PARAMETER :: nmp_max = 300000
+    DOUBLE PRECISION :: mp_xyz(nmp_max,3), mp_sig(nmp_max,6)
+    INTEGER :: n_mp_ddm
+    COMMON /ddmmpd/ mp_xyz, mp_sig
+    COMMON /ddmmpi/ n_mp_ddm
+
+    DOUBLE PRECISION :: dyad(9), tsum, best, dd, pm(3)
+    INTEGER :: k, j, nfin, ios, ibest
+
+    full_f_pause        = TRIM(foldername)//"/"//TRIM(f_pause_flag)//TRIM(f_flag)//".flag"
     full_f_stress_ready = TRIM(foldername)//"/"//TRIM(f_stress_ready_flag)//TRIM(f_flag)//".flag"
-    full_f_running = TRIM(foldername)//"/"//TRIM(f_running_flag)//TRIM(f_flag)//".flag"
-    full_f_stop = TRIM(foldername)//"/"//TRIM(f_stop_flag)//TRIM(f_flag)//".flag"
-    
+    full_f_running      = TRIM(foldername)//"/"//TRIM(f_running_flag)//TRIM(f_flag)//".flag"
+    full_f_stop         = TRIM(foldername)//"/"//TRIM(f_stop_flag)//TRIM(f_flag)//".flag"
+    full_f_segs         = TRIM(foldername)//"/Data_segs.txt"
+    full_f_femstress    = TRIM(foldername)//"/../FEMSTRESS"
+
     SELECT CASE (lOp)
-    
+
+    CASE (j_int_StartAnalysis)
+        n_seg_ddm = 0
+        n_mp_ddm  = 0
+        ddm_tstep = 0.0d0
+        ddm_eff   = 0.0d0
+
     CASE (j_int_StartIncrement)
         INQUIRE(FILE=full_f_stop, EXIST=STOP_EXISTS)
         IF (STOP_EXISTS) THEN
@@ -109,101 +259,136 @@ subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
             CALL XPLB_EXIT
         END IF
 
+!       이 증분의 적분점 보관함을 비운다
+        n_mp_ddm = 0
+
+!       OpenDiS 가 쓴 세그먼트를 읽는다 (헤더 + 23 열)
+!         n_segment n_segment_final t_step EffSlip
+!         id1 id2 | r1_old(3) r2_old(3) | r1_new(3) r2_new(3) | dyad(9)
+        INQUIRE(FILE=full_f_segs, EXIST=SEGS_EXIST)
+        IF (SEGS_EXIST) THEN
+            OPEN(UNIT=81, FILE=TRIM(full_f_segs), STATUS="OLD", ACTION="READ", IOSTAT=ios)
+            IF (ios .EQ. 0) THEN
+                READ(81,*,IOSTAT=ios) n_seg_ddm, nfin, ddm_tstep, ddm_eff
+                IF (ios .NE. 0) n_seg_ddm = 0
+                IF (n_seg_ddm .GT. nseg_max) n_seg_ddm = nseg_max
+                DO k = 1, n_seg_ddm
+                    READ(81,*,IOSTAT=ios) sg_id(k,1), sg_id(k,2), &
+                        (sg_old(k,j), j=1,6), (sg_new(k,j), j=1,6), (dyad(j), j=1,9)
+                    IF (ios .NE. 0) THEN
+                        n_seg_ddm = k - 1
+                        EXIT
+                    END IF
+!                   세그먼트 중점이 움직인 거리 (원본 :1134-1137)
+                    tsum = 0.0d0
+                    DO j = 1, 3
+                        tsum = tsum + (sg_new(k,j) + sg_new(k,j+3) &
+                                     - sg_old(k,j) - sg_old(k,j+3))**2
+                    END DO
+                    sg_trv(k) = 0.5d0*sqrt(tsum)
+!                   dyad = outer(n_hat, b) -> 대칭부가 de_p (원본 :1842-1847)
+                    sg_dep(k,1) = dyad(1)
+                    sg_dep(k,2) = dyad(5)
+                    sg_dep(k,3) = dyad(9)
+                    sg_dep(k,4) = 0.5d0*(dyad(2) + dyad(4))
+                    sg_dep(k,5) = 0.5d0*(dyad(6) + dyad(8))
+                    sg_dep(k,6) = 0.5d0*(dyad(7) + dyad(3))
+                END DO
+                CLOSE(81)
+                PRINT *, "VEXTERNALDB: read Data_segs.txt, n_seg =", n_seg_ddm, &
+                         " t_step =", ddm_tstep, " EffSlip =", ddm_eff
+            END IF
+        END IF
+
     CASE (j_int_EndIncrement)
         PRINT *, "EndInc: kInc=", i_Array(i_int_kInc), &
            " StepTime=", r_Array(i_flt_StepTime), " dt=", r_Array(i_flt_dTime)
-        ! Abort check first: terminate cleanly if stop flag exists
         INQUIRE(FILE=full_f_stop, EXIST=STOP_EXISTS)
         IF (STOP_EXISTS) THEN
             PRINT *, "VEXTERNALDB: ABAQUS_stop.flag detected at EndIncrement. Terminating..."
             CALL XPLB_EXIT
         END IF
-        ! Check the step number
+
+!       ---- FEMSTRESS: 세그먼트마다 가장 가까운 적분점의 응력 ----------
+!       OpenDiS 의 ReadRemoteStress 가 읽는 형식:
+!         n1 n2 sxx syy szz syz sxz sxy flag        (9 항)
+        IF (n_seg_ddm .GT. 0 .AND. n_mp_ddm .GT. 0) THEN
+            OPEN(UNIT=82, FILE=TRIM(full_f_femstress), STATUS="REPLACE", ACTION="WRITE")
+            DO k = 1, n_seg_ddm
+                DO j = 1, 3
+                    pm(j) = 0.25d0*(sg_old(k,j) + sg_old(k,j+3) &
+                                  + sg_new(k,j) + sg_new(k,j+3))
+                END DO
+                ibest = 1
+                best  = 1.0d30
+                DO j = 1, n_mp_ddm
+                    dd = (mp_xyz(j,1)-pm(1))**2 + (mp_xyz(j,2)-pm(2))**2 &
+                       + (mp_xyz(j,3)-pm(3))**2
+                    IF (dd .LT. best) THEN
+                        best  = dd
+                        ibest = j
+                    END IF
+                END DO
+                WRITE(82,'(I8,1X,I8,6(1X,E16.8),1X,I2)') &
+                    sg_id(k,1), sg_id(k,2), (mp_sig(ibest,j), j=1,6), 1
+            END DO
+            CLOSE(82)
+            PRINT *, "VEXTERNALDB: wrote FEMSTRESS for", n_seg_ddm, "segments from", &
+                     n_mp_ddm, "integration points"
+        END IF
+
         kInc = i_Array(i_int_kInc)
         IF (kInc == 1) THEN
-        ! remove ABAQUS_running.flag & write ABAQUS_pause.flag only
             PRINT *, "[EndStep] kInc = 1. write ABAQUS_PAUSE.flag only"
-            
             OPEN(UNIT=97, FILE=TRIM(full_f_running), STATUS="REPLACE", ACTION="WRITE")
             CLOSE(97, STATUS="DELETE")
-            PRINT *, "VEXTXERNALDB deleted empty file: ", TRIM(f_running_flag)
-            
             OPEN(UNIT=99, FILE=TRIM(full_f_pause), STATUS="REPLACE", ACTION="WRITE")
             CLOSE(99)
-            PRINT *, "VEXTERNALDB made empty file: ", TRIM(f_pause_flag)
-            
             DO WHILE (.TRUE.)
-                PRINT *, "Checking for file: ", TRIM(f_pause_flag)
-
                 INQUIRE (FILE=full_f_pause, EXIST=FILEEXISTANCE)
-            
                 IF(FILEEXISTANCE) THEN
-                    PRINT *, "ABAQUS_pause.flag exists"
                     CALL SLEEPQQ(1000)
                 ELSE
-                    PRINT *, "ABAQUS_pause.flag NOT exists, keep calculation"
                     EXIT
                 END IF
             END DO
         ELSE
-        ! remove ABAQUS_running.flag & write ABAQUS_pause.flag, ABAQUS_stress_ready.flag
             PRINT *, "[EndStep] kInc = ", kInc, ". write ABAQUS_PAUSE.flag and ABAQUS_stress_ready.flag"
-            
             OPEN(UNIT=97, FILE=TRIM(full_f_running), STATUS="REPLACE", ACTION="WRITE")
             CLOSE(97, STATUS="DELETE")
-            PRINT *, "VEXTERNALDB deleted empty file: ", TRIM(f_running_flag)
-            
             OPEN(UNIT=99, FILE=TRIM(full_f_pause), STATUS="REPLACE", ACTION="WRITE")
             CLOSE(99)
-            PRINT *, "VEXTERNALDB made empty file: ", TRIM(f_pause_flag)
-     
             OPEN(UNIT=99, FILE=TRIM(full_f_stress_ready), STATUS="REPLACE", ACTION="WRITE")
             CLOSE(99)
-            PRINT *, "VEXTERNALDB made empty file: ", TRIM(f_stress_ready_flag)    
-            
             DO WHILE (.TRUE.)
-                PRINT *, "Checking for file: ", TRIM(f_pause_flag)
-
                 INQUIRE (FILE=full_f_pause, EXIST=FILEEXISTANCE)
-            
                 IF(FILEEXISTANCE) THEN
-                    PRINT *, "ABAQUS_pause.flag exists"
                     CALL SLEEPQQ(1000)
                 ELSE
-                    PRINT *, "ABAQUS_pause.flag NOT exists, keep calculation"
                     EXIT
                 END IF
             END DO
         ENDIF
 
     CASE (j_int_EndAnalysis)
-    ! Clean up the flags
         PRINT *, "[EndAnalysis] Clean up flags ..."
-        
         INQUIRE(FILE=TRIM(full_f_pause), EXIST=FILEEXISTANCE)
         IF (FILEEXISTANCE) THEN
             OPEN(99, FILE=TRIM(full_f_pause), STATUS="OLD")
             CLOSE(99, STATUS="DELETE")
-            PRINT *, "Deleted: ", TRIM(full_f_pause)
         END IF
-
         INQUIRE(FILE=TRIM(full_f_stress_ready), EXIST=FILEEXISTANCE)
         IF (FILEEXISTANCE) THEN
             OPEN(98, FILE=TRIM(full_f_stress_ready), STATUS="OLD")
             CLOSE(98, STATUS="DELETE")
-            PRINT *, "Deleted: ", TRIM(full_f_stress_ready)
         END IF
-
         INQUIRE(FILE=TRIM(full_f_running), EXIST=FILEEXISTANCE)
         IF (FILEEXISTANCE) THEN
             OPEN(97, FILE=TRIM(full_f_running), STATUS="OLD")
             CLOSE(97, STATUS="DELETE")
-            PRINT *, "Deleted: ", TRIM(full_f_running)
         END IF
-
         PRINT *, "TotalTime=", r_Array(i_flt_TotalTime), &
                  ", LastStepTime=", r_Array(i_flt_StepTime)
-
         CALL FLUSH(6)
     END SELECT
     RETURN

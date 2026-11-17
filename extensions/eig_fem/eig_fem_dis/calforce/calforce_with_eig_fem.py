@@ -7,6 +7,7 @@ import sys, os
 pydis_paths = ['../../../../python', '../../../../lib', '../../../../core/pydis/python']
 [sys.path.append(os.path.abspath(path)) for path in pydis_paths if not path in sys.path]
 
+import os
 import numpy as np
 from typing import Tuple
 from pydis.disnet import DisNet, Tag
@@ -104,8 +105,32 @@ class CalForce(CalForce_Base):
         return state
 
     def CalEigstrainField(self, DM: DisNetManager, state: dict) -> dict:
-        # calculate eigstrain field from dislocation motion from previous step
+        """ABAQUS 를 깨우기 전에 eigenstrain 입력이 제자리에 있는지 확인한다.
+
+        [2026-11-16] 종전에는 print 만 하는 빈 함수였고, 그래서 ABAQUS 가
+        빈 eigenstrain 으로 돌았다. 이제 세그먼트 파일은 step_write_files 가
+        ABAQUS 폴더에 Data_segs.txt 로 써 두고, VUMAT 이 그것을 읽어
+        sigma = sigma_old + C : (d_eps - d_eps_p) 로 쓴다.
+        여기서는 그 파일이 있는지 보고 내용을 요약해 알려 준다 -
+        없으면 ABAQUS 는 그냥 탄성해를 풀게 되므로 조용히 넘어가면 안 된다.
+        """
         print("CalForce: CalEigstrainField")
+        aba = state.get("foldername_ABAQUS", None)
+        if not aba:
+            print("  !! foldername_ABAQUS 가 없다 - eigenstrain 을 넘기지 못한다")
+            return state
+        path = os.path.join(aba, "Data_segs.txt")
+        if not os.path.exists(path):
+            print("  !! %s 가 없다 - ABAQUS 가 탄성해만 푼다" % path)
+            return state
+        with open(path) as f:
+            head = f.readline().split()
+            nrow = sum(1 for _ in f)
+        if len(head) >= 4:
+            print("  Data_segs.txt: n_seg=%s t_step=%s EffSlip=%s (%d rows)"
+                  % (head[0], head[2], head[3], nrow))
+        else:
+            print("  !! Data_segs.txt 헤더가 이상하다: %s" % head)
         return state
 
     def FEMRemoteStress(self, DM: DisNetManager, state: dict) -> dict:

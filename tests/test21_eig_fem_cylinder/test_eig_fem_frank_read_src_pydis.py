@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
             # used defined parameters for DDM run
             "burger": 2.86e-10,
-            "L_elem": 2.86e-10 * 500,
+            "L_elem": 2.86e-10 * 100,   # 요소 한 변 (b 단위) -> EffSlip = 2*100
             "density": 2700,
             "E": 70e9,
             "rmax_DD": 50 * 2.86e-10,
