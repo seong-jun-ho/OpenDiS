@@ -104,7 +104,29 @@ class SimulationDriver(SimulateNetwork):
 
         # 4) call loopgenerate
         for k in sel:
-            nu.loopgenerate(DM, site_index=int(k), state={})
+            # [2026-11-16] 새 루프 노드에 old 좌표를 달아 준다.
+            # save_old_nodes 는 step_integrate 에서 이미 돌았으므로, 여기서
+            # 생기는 노드는 시작 위치가 없다. ParaDiS 는 그런 노드의 old 좌표를
+            # 루프 중심에 둔다 (src/LoopGenerate_FCC.cc:131-133):
+            # 그러면 세그먼트별로 쓸고 간 삼각형의 합 = 루프 면적이 되어,
+            # 갓 생긴 루프의 면적이 그 스텝의 소성변형률로 한 번 계산된다.
+            G = DM.get_disnet(DisNet)
+            before = set(tuple(t) for t in G.all_nodes_tags())
+
+            nu.loopgenerate(DM, site_index=int(k), state=state)
+
+            G = DM.get_disnet(DisNet)
+            fresh = [t for t in (tuple(x) for x in G.all_nodes_tags())
+                     if t not in before]
+            oldpos = state.get('oldpos_dict')
+            if oldpos is None:
+                print("[NUC] oldpos_dict 가 없다 - old 좌표 등록을 건너뛴다")
+            elif fresh:
+                c = np.array([float(nu.x[k]), float(nu.y[k]), float(nu.z[k])])
+                for t in fresh:
+                    oldpos[t] = c.copy()
+                print("[NUC] %d new nodes: old position set to the loop centre %s"
+                      % (len(fresh), np.array2string(c, precision=1)))
         
 
     def step_integrate(self, DM: DisNetManager, state: dict):

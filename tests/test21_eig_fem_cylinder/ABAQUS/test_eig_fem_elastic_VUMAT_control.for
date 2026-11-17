@@ -88,7 +88,7 @@ subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
     CHARACTER(*), PARAMETER :: f_running_flag = "ABAQUS_running"
     CHARACTER(*), PARAMETER :: f_stop_flag = "ABAQUS_stop"
 !   [CAUTION] foldername should be ABSOLUTE PATH !!!!
-    CHARACTER(*), PARAMETER :: foldername = "/home/kyeongmi/Codes/OpenDiS.eig_fem.git/tests/test21_eig_fem_cylinder/ABAQUS"
+    CHARACTER(*), PARAMETER :: foldername = "/home/wnswjswk1/Codes/OpenDiS_new/tests/test21_eig_fem_cylinder/ABAQUS"
     CHARACTER(*), PARAMETER :: f_flag = ""
     CHARACTER(LEN=256) :: full_f_pause
     CHARACTER(LEN=256) :: full_f_stress_ready
