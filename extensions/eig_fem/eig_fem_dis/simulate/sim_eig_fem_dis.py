@@ -151,9 +151,7 @@ class SimulationDriver(SimulateNetwork):
     def step_integrate(self, DM: DisNetManager, state: dict):
         """step_integrate: invoked for time-integration at each time step
         """
-        # (11/17/2026, junho) upstream (1573301, 537dd5b) 이 PyDiS 에 save_old_nodes /
-        # plastic_strain 을 구현했다. 옛 위치는 state['oldpos_dict'] 에 **태그로**
-        # 저장되므로 remesh/collision 이 노드를 재색인해도 대응이 유지된다.
+        # (11/17/2026, junho) uncommented save_old_nodes / plastic_strain
         self.save_old_nodes(DM, state)
 
         print("------step_integrate-------")
