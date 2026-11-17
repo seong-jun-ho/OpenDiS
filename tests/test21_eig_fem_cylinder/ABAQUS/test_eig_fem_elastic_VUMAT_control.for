@@ -77,11 +77,13 @@ subroutine vumat(&
     G      = E / (2.0d0 * (1.0d0 + NU))
     LAMBDA = E * NU / ((1.0d0 + NU)*(1.0d0 - 2.0d0 * NU))
 
-!   한 DD 스텝에서 이 증분이 차지하는 시간 몫.
-!   이것으로 나눠 더하므로 증분을 쪼개도 총량이 같다.
-    frac = 1.0d0
-    IF (ddm_tstep .GT. 0.0d0) frac = dt / ddm_tstep
-    IF (frac .GT. 1.0d0) frac = 1.0d0
+!   de_p/temp_omega 는 **변형률이 아니라 변형률 속도** [1/s] 다.
+!   원본은 거기에 증분 시간 DT 를 곱해 쓴다:
+!       dstranp33(1,1) = STATEOLD(iBlock,15) * DT     (원본 :350)
+!   test21 은 핸드셰이크가 증분마다 걸려 **DD 스텝당 ABAQUS 증분이 하나**다.
+!   그래서 그 DD 스텝의 sweep 전체가 한 번에 들어가도록 t_step 을 곱한다
+!   (증분이 여러 개로 쪼개지면 여기를 DT 로 바꾸고 활성부피도 움직여야 한다).
+    frac = ddm_tstep
 
     do i = 1, nblock
 

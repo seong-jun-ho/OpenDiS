@@ -84,7 +84,7 @@ def main():
                           topology=topology, collision=collision, remesh=remesh, vis=vis,
                           remote_stress=remote_stress,
                           surface_topology=surface_topology, nucleation = nucleation, 
-                          state=state, max_step=5, loading_mode="stress",
+                          state=state, max_step=30, loading_mode="stress",
                           applied_stress=np.array([0.0, 0.0, 0.0, 0.0, 4.0e10, 0.0]),
                           print_freq=1, plot_freq=1, plot_pause_seconds=0.01,
                           write_freq=1, write_dir='output', save_state=False)
