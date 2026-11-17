@@ -112,7 +112,7 @@ if __name__ == "__main__":
             "jobname_head": '',
             "ABAQUS_input_filename": 'test_eig_fem_elastic_VUMAT_control',
             "num_cpus": 1,
-            "umatname": 'VUMAT_prod.for',
+            "umatname": '',   # set after set_params, further down
             "foldername_ABAQUS": 'ABAQUS',
             # "cmd_env": 'setenv.bat',
 
@@ -152,7 +152,13 @@ if __name__ == "__main__":
     # (11/17/2026, junho) set_params overwrites "umatname", so the production VUMAT
     # has to be named AFTER it - otherwise abaqus compiles the 422-line test
     # VUMAT, which has no vucharlength, and the job dies in the packager.
-    state["umatname"] = 'VUMAT_prod.for'
+    # the production VUMAT lives with the extension, not in this test
+    # folder, so point at it by absolute path - run_abaqus runs with
+    # cwd set to ABAQUS/
+    state["umatname"] = os.path.normpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..",
+        "extensions", "eig_fem", "eig_fem_dis", "abaqus",
+        "VUMAT_DDM_multiple_DDcycle.for"))
     print('    + user subroutine: %s' % state["umatname"])
 
     # The handshake flags must exist before ABAQUS starts looking for them,
