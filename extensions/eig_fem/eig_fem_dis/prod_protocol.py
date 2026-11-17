@@ -323,6 +323,53 @@ class ProdProtocol:
                   % (len(mid), len(mid) - nsearch, nsearch, nmiss))
         return path
 
+    def write_SurfaceStress(self, path='SurfaceStress'):
+        """Surface_stress%04d.txt -> SurfaceStress, what Nucleation reads.
+
+        The VUMAT writes 7 columns, elem_id plus the six stress components
+        (VUMAT:497-500).  make_nuc_sites wants ten:
+
+            id  x y z  S11 S22 S33 S23 S13 S12
+
+        so put the element centroid in, from OriginalCoordNodes.txt, and
+        scale the stress to Pa.  The component order already lines up:
+        xx,yy,zz,yz,zx,xy is S11,S22,S33,S23,S13,S12 (zx is xz).
+
+        Appended every exchange like Output_stress, so keep the last row
+        per element and empty the file afterwards.
+        """
+        self._load_mesh()
+        cen = {int(e): self._elem_c[i] for i, e in enumerate(self._elem_ids)}
+        rows = {}
+        for r in range(self.num_cpus):
+            p = self._p('Surface_stress%04d.txt' % (r + 1))
+            if not os.path.exists(p):
+                continue
+            d = np.loadtxt(p, ndmin=2)
+            if d.size:
+                for row in d:
+                    rows[int(row[0])] = row[1:7].astype(float)
+            open(p, 'w').close()
+
+        if not rows:
+            # nothing from ABAQUS yet; leave the file alone so the caller
+            # can tell "not written" from "written empty"
+            self._say("SurfaceStress: nothing to write yet")
+            return None
+
+        n = 0
+        with open(path, 'w') as f:
+            for e in sorted(rows):
+                c = cen.get(e)
+                if c is None:
+                    continue
+                s = rows[e] * self.stress_scale
+                f.write('%d %.6e %.6e %.6e ' % (e, c[0], c[1], c[2])
+                        + ' '.join('%.6e' % v for v in s) + '\n')
+                n += 1
+        self._say('SurfaceStress: %d sites' % n)
+        return path
+
     def _element_of(self, p):
         """Element whose box contains p; nearest centroid if none does."""
         inside = np.all((p >= self._elem_lo - 1e-9) &

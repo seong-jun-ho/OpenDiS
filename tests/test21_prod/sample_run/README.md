@@ -14,6 +14,9 @@ kept so the interface can be read without running anything.
 | mesh | 1000 C3D8R elements, 488 on the surface |
 | VUMAT | `extensions/eig_fem/eig_fem_dis/abaqus/VUMAT_DDM_multiple_DDcycle.for` (production, 1,911 lines) |
 
+The prescribed displacement is 20 b; nucleation is off. For a run
+with nucleation see `../sample_run_nuc`.
+
 Taken from the first cycle whose stress had arrived, before
 `ProdProtocol.read_element_stress` emptied it.
 

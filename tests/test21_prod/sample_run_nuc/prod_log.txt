@@ -1,0 +1,318 @@
+[PROD] created ABAQUSworking flags for 1 rank(s)
+[NUC] no SurfaceStress yet (first step); skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] rank 1 had no Matlabworking flag; created ABAQUSworking
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 10.9 s)
+[PROD] mesh: 1000 elements
+[PROD] element stress: 0 elements from (no file)
+[PROD] FEMSTRESS: 5 segments, 0 from the VUMAT link table, 5 by our own search (5 had no element stress)
+[PROD] SurfaceStress: nothing to write yet
+[NUC] no SurfaceStress yet (first step); skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] snapshot -> sample_run_nuc (Output_stress0001.txt, Output_link0001.txt, Surface_stress0001.txt, rn_check0001.txt, Data_segs.txt, rn_matrix.txt, FEM_deltaU.txt, surface_elements.txt, OriginalCoordNodes.txt)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=6.874e-277, maxP=1.409e-279, max|RSS|=4.404e+08 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=6.874e-277, maxP=1.409e-279, max|RSS|=4.665e+08 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=4.963e-127, maxP=4.963e-127, max|RSS|=6.948e+08 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=1.472e-87, maxP=1.468e-87, max|RSS|=8.082e+08 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=1.874e-53, maxP=1.725e-53, max|RSS|=9.813e+08 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=1.971e-36, maxP=1.425e-36, max|RSS|=1.132e+09 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.5 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=2.671e-37, maxP=2.671e-37, max|RSS|=1.124e+09 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=1.723e-23, maxP=1.156e-23, max|RSS|=1.320e+09 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.5 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=5.213e-19, maxP=3.384e-19, max|RSS|=1.414e+09 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=1.724e-13, maxP=1.722e-13, max|RSS|=1.575e+09 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=7.401e-10, maxP=2.215e-10, max|RSS|=1.694e+09 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=1.435e-07, maxP=7.992e-08, max|RSS|=1.818e+09 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=4.686e-05, maxP=1.584e-05, max|RSS|=1.960e+09 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=6.861e-03, maxP=4.065e-03, max|RSS|=2.158e+09 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=2.496e-02, maxP=5.531e-03, max|RSS|=2.171e+09 Pa
+[NUC] no sites flagged by KMC; skip
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=6.232e-01, maxP=1.481e-01, max|RSS|=2.328e+09 Pa
+[NUC] site 121: slip_id=2
+[NUC] RSSmax=2.171e+09 Pa
+[NUC] normal (n) = [0.57735027 0.57735027 0.57735027]
+[NUC] burgers(b) = [ 0.          0.70710678 -0.70710678]
+[NUC] 6 new nodes: old position set to the loop centre [150. 650. 950.]
+[PROD] rn_matrix.txt: 11 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 1.3 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 11 segments, 9 from the VUMAT link table, 2 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=7.551e+00, maxP=9.451e-01, max|RSS|=2.436e+09 Pa
+[NUC] site 233: slip_id=8
+[NUC] RSSmax=-2.329e+09 Pa
+[NUC] normal (n) = [ 0.57735027 -0.57735027  0.57735027]
+[NUC] burgers(b) = [0.70710678 0.70710678 0.        ]
+[NUC] 6 new nodes: old position set to the loop centre [450. 850. 950.]
+[PROD] rn_matrix.txt: 17 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 17 segments, 14 from the VUMAT link table, 3 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=4.697e+01, maxP=4.425e+00, max|RSS|=2.540e+09 Pa
+[NUC] site 210: slip_id=7
+[NUC] RSSmax=-2.383e+09 Pa
+[NUC] normal (n) = [ 0.57735027 -0.57735027  0.57735027]
+[NUC] burgers(b) = [0.         0.70710678 0.70710678]
+[NUC] 6 new nodes: old position set to the loop centre [450.  50. 250.]
+[PROD] rn_matrix.txt: 23 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 23 segments, 19 from the VUMAT link table, 4 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=3.811e+02, maxP=2.075e+01, max|RSS|=2.659e+09 Pa
+[NUC] site 338: slip_id=7
+[NUC] RSSmax=-2.613e+09 Pa
+[NUC] normal (n) = [ 0.57735027 -0.57735027  0.57735027]
+[NUC] burgers(b) = [0.         0.70710678 0.70710678]
+[NUC] 6 new nodes: old position set to the loop centre [750. 750.  50.]
+[PROD] rn_matrix.txt: 29 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 29 segments, 26 from the VUMAT link table, 3 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=7.739e+02, maxP=6.680e+01, max|RSS|=2.764e+09 Pa
+[NUC] site 165: slip_id=4
+[NUC] RSSmax=2.488e+09 Pa
+[NUC] normal (n) = [-0.57735027  0.57735027  0.57735027]
+[NUC] burgers(b) = [0.70710678 0.70710678 0.        ]
+[NUC] 6 new nodes: old position set to the loop centre [250. 950. 350.]
+[PROD] rn_matrix.txt: 35 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 1.0 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 35 segments, 32 from the VUMAT link table, 3 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=7.158e+03, maxP=5.449e+02, max|RSS|=2.992e+09 Pa
+[NUC] site 35: slip_id=5
+[NUC] RSSmax=-2.625e+09 Pa
+[NUC] normal (n) = [-0.57735027  0.57735027  0.57735027]
+[NUC] burgers(b) = [ 0.         -0.70710678  0.70710678]
+[NUC] 6 new nodes: old position set to the loop centre [ 50. 350. 550.]
+[PROD] rn_matrix.txt: 41 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 41 segments, 39 from the VUMAT link table, 2 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=1.443e+04, maxP=1.130e+03, max|RSS|=3.087e+09 Pa
+[NUC] site 291: slip_id=2
+[NUC] RSSmax=2.703e+09 Pa
+[NUC] normal (n) = [0.57735027 0.57735027 0.57735027]
+[NUC] burgers(b) = [ 0.          0.70710678 -0.70710678]
+[NUC] 6 new nodes: old position set to the loop centre [650. 150. 950.]
+[PROD] rn_matrix.txt: 47 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 47 segments, 45 from the VUMAT link table, 2 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=3.013e+04, maxP=1.410e+03, max|RSS|=3.118e+09 Pa
+[NUC] site 117: slip_id=8
+[NUC] RSSmax=-2.987e+09 Pa
+[NUC] normal (n) = [ 0.57735027 -0.57735027  0.57735027]
+[NUC] burgers(b) = [0.70710678 0.70710678 0.        ]
+[NUC] 6 new nodes: old position set to the loop centre [150. 450. 950.]
+[PROD] rn_matrix.txt: 51 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.5 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 52 segments, 35 from the VUMAT link table, 17 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=8.308e+04, maxP=6.152e+03, max|RSS|=3.354e+09 Pa
+[NUC] site 429: slip_id=0
+[NUC] RSSmax=-2.906e+09 Pa
+[NUC] normal (n) = [0.57735027 0.57735027 0.57735027]
+[NUC] burgers(b) = [ 0.70710678 -0.70710678  0.        ]
+[NUC] 6 new nodes: old position set to the loop centre [950. 450. 150.]
+[PROD] rn_matrix.txt: 59 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 60 segments, 36 from the VUMAT link table, 24 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=1.402e+05, maxP=5.465e+03, max|RSS|=3.332e+09 Pa
+[NUC] site 380: slip_id=7
+[NUC] RSSmax=-2.766e+09 Pa
+[NUC] normal (n) = [ 0.57735027 -0.57735027  0.57735027]
+[NUC] burgers(b) = [0.         0.70710678 0.70710678]
+[NUC] 6 new nodes: old position set to the loop centre [850. 950. 250.]
+[PROD] rn_matrix.txt: 64 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 65 segments, 39 from the VUMAT link table, 26 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=3.346e+05, maxP=1.545e+04, max|RSS|=3.536e+09 Pa
+[NUC] site 349: slip_id=10
+[NUC] RSSmax=3.317e+09 Pa
+[NUC] normal (n) = [ 0.57735027  0.57735027 -0.57735027]
+[NUC] burgers(b) = [0.         0.70710678 0.70710678]
+[NUC] 6 new nodes: old position set to the loop centre [750. 950. 750.]
+[PROD] rn_matrix.txt: 70 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 70 segments, 45 from the VUMAT link table, 25 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=5.754e+05, maxP=3.694e+04, max|RSS|=3.742e+09 Pa
+[NUC] site 59: slip_id=10
+[NUC] RSSmax=3.304e+09 Pa
+[NUC] normal (n) = [ 0.57735027  0.57735027 -0.57735027]
+[NUC] burgers(b) = [0.         0.70710678 0.70710678]
+[NUC] 6 new nodes: old position set to the loop centre [ 50. 550. 950.]
+[PROD] rn_matrix.txt: 74 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 75 segments, 54 from the VUMAT link table, 21 by our own search (0 had no element stress)
+[PROD] SurfaceStress: 488 sites
+[NUC] sites loaded: N=488
+[NUC] totals: totalR=8.795e+05, maxP=4.707e+04, max|RSS|=3.807e+09 Pa
+[NUC] site 72: slip_id=10
+[NUC] RSSmax=3.432e+09 Pa
+[NUC] normal (n) = [ 0.57735027  0.57735027 -0.57735027]
+[NUC] burgers(b) = [0.         0.70710678 0.70710678]
+[NUC] 6 new nodes: old position set to the loop centre [ 50. 750. 250.]
+[PROD] rn_matrix.txt: 79 nodes
+[PROD] released to ABAQUS

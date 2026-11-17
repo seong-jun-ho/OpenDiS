@@ -9,3 +9,6 @@ stale_*/
 # a snapshot of one exchange, kept on purpose
 !sample_run/
 !sample_run/**
+!sample_run_nuc/
+!sample_run_nuc/**
+!ABAQUS/test_eig_fem_elastic_VUMAT_control.inp.load20_bak

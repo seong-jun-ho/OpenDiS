@@ -2419,7 +2419,7 @@ _PickedSet7, YSYMM
 *Boundary
 _PickedSet5, ZSYMM
 *Boundary, amplitude=Amp-1
-_PickedSet6, 2, 2, 20.
+_PickedSet6, 2, 2, 10000.
 **
 ** OUTPUT REQUESTS
 **

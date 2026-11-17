@@ -51,8 +51,6 @@ class SimulationDriver(SimulateNetwork):
         # (eig_fem_dis.prod_protocol.ProdProtocol).  None keeps the
         # original ABAQUS_pause/running flag path untouched.
         self.prod_protocol = prod_protocol
-        if prod_protocol is not None:
-            prod_protocol.init_flags()
         
         # Launch abaqus
         # or put at the beginning of test case
@@ -75,6 +73,7 @@ class SimulationDriver(SimulateNetwork):
                 if not pp.wait_for_dd_turn():
                     raise RuntimeError("prod_protocol: ABAQUS did not hand back")
                 pp.write_FEMSTRESS(DM, pp.read_element_stress())
+                pp.write_SurfaceStress()
             return
         if self.remote_stress != None:
             istep = state['istep']
@@ -101,6 +100,18 @@ class SimulationDriver(SimulateNetwork):
         if nu is None:
             print("[NUC] no nucleator attached; skip")
             return  
+
+        # (11/17/2026, junho) nothing has run on the FEM side yet on the first
+        # step, so there is no stress to decide nucleation from.  Skip rather
+        # than fail - production has the same gap on its first cycle.
+        import os as _os
+        _sf = _os.path.join(getattr(nu, "workdir", "."),
+                            getattr(nu, "dir_femstress", "") or "",
+                            getattr(nu, "stress_filename", "SurfaceStress"))
+        if not _os.path.exists(_sf):
+            print("[NUC] no %s yet (first step); skip"
+                  % _os.path.basename(_sf))
+            return
 
         # 1) call make_nuc_sites
         nu.make_nuc_sites()

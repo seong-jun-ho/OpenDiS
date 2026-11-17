@@ -92,9 +92,9 @@ def main():
                           surface_topology=surface_topology,
                           # (11/17/2026, junho) 검증 런: 핵생성 끄고 FR 소스 하나만.
                           # 소성변형률이 제대로 가는지만 본다.
-                          nucleation=None,
+                          nucleation=nucleation,   # (11/17/2026, junho) nucleation on
                           prod_protocol=prod,
-                          state=state, max_step=20, loading_mode="stress",
+                          state=state, max_step=30, loading_mode="stress",
                           applied_stress=np.array([0.0, 0.0, 0.0, 0.0, 4.0e10, 0.0]),
                           print_freq=1, plot_freq=1, plot_pause_seconds=0.01,
                           write_freq=1, write_dir='output', save_state=False)
@@ -157,7 +157,7 @@ if __name__ == "__main__":
 
     # The handshake flags must exist before ABAQUS starts looking for them,
     # so build the adapter here rather than inside the driver.
-    state["_prod_protocol"] = ProdProtocol(state["foldername_ABAQUS"], num_cpus=state.get("num_cpus", 1), stress_scale=1.0e6, snapshot_dir="sample_run")
+    state["_prod_protocol"] = ProdProtocol(state["foldername_ABAQUS"], num_cpus=state.get("num_cpus", 1), stress_scale=1.0e6, snapshot_dir="sample_run_nuc")
     state["_prod_protocol"].init_flags()
     
     # (09/01/2025, kyeongmi) For initiating ABAQUS subprocess. ABAQUS starts and waits until "ABAQUS_running" flag is shown.
