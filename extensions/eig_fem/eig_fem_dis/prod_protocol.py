@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""(11/17/2026, junho) Adapter so PyDiS can drive the *production* ParaDiS VUMAT.
+"""Adapter so PyDiS can drive the *production* ParaDiS VUMAT.
 
 The production VUMAT (VUMAT_DDM_multiple_DDcycle.for) was written to talk to
 the MATLAB driver.  This module makes PyDiS play MATLAB's part, without
@@ -183,14 +183,23 @@ class ProdProtocol:
         self._elem_c = xyz.mean(axis=1)
         self._say('mesh: %d elements' % len(d))
 
-    def read_element_stress(self):
-        """Output_stress%04d.txt -> {elem_id: [xx, yy, zz, yz, xz, xy]}.
+    def read_element_stress(self, truncate=True):
+        """Output_stress%04d.txt -> {elem_id: [xx, yy, zz, yz, xz, xy, T]}.
 
-        The VUMAT writes STATENEW(21,22,23,25,26,24) in that order
-        (VUMAT:490-492), i.e. xx, yy, zz, yz, zx, xy - zx is xz, so the
-        order already matches what FEMSTRESS wants.  It appends every
-        exchange, so the LAST row for an element id is the current one.
+        The VUMAT writes STATENEW(21,22,23,25,26,24) then TEMPNEW
+        (VUMAT:490-492), i.e. xx, yy, zz, yz, zx, xy, T - zx is xz, so the
+        stress order already matches what FEMSTRESS wants.
+
+        Follows the production reader
+        (generate_postprocessing_data12_cleanup_vec.m:32-72):
+
+          * if the file holds more rows than there are elements, ABAQUS
+            wrote twice this cycle; keep the FIRST half
+          * empty the file afterwards, so the next cycle reads only its own
+            output.  Without this the file grows without bound - it was
+            2.2 MB after 20 steps here.
         """
+        self._load_mesh()
         out = {}
         found = []
         for r in range(self.num_cpus):
@@ -199,13 +208,50 @@ class ProdProtocol:
                 continue
             found.append(os.path.basename(p))
             d = np.loadtxt(p, ndmin=2)
-            if d.size == 0:
-                continue
-            for row in d:
-                out[int(row[0])] = row[1:7].astype(float)
+            if d.size:
+                nel = len(self._elem_ids) if self._elem_ids is not None else 0
+                if nel and len(d) > nel:
+                    d = d[:len(d) // 2]
+                for row in d:
+                    out[int(row[0])] = row[1:8].astype(float)
+            if truncate:
+                open(p, 'w').close()
         self._say('element stress: %d elements from %s'
                   % (len(out), ', '.join(found) if found else '(no file)'))
         return out
+
+    def read_link_table(self):
+        """(n1, n2) -> element, as the VUMAT itself assigned it.
+
+        This is what the production MATLAB uses - it does not search
+        geometrically at all, it looks the pair up in the table the VUMAT
+        writes (generate_postprocessing_data12_cleanup_vec.m:298-336,
+        VUMAT:1313-1330).
+
+        Worth preferring over our own search: when a segment midpoint sits
+        exactly on an element face, both neighbours pass a bounding-box
+        test and the two codes break the tie differently.  Measured on
+        test21_prod: 2 of 5 segments landed on a face and we picked the
+        neighbour the VUMAT had not used (345 vs 445, 365 vs 465).  Taking
+        the VUMAT's own answer also guarantees we read the stress of the
+        element it deposited the eigenstrain into.
+
+        The file is appended every exchange, so the LAST row for a pair is
+        the current one.
+        """
+        tbl = {}
+        for r in range(self.num_cpus):
+            p = self._p('Output_link%04d.txt' % (r + 1))
+            if not os.path.exists(p):
+                continue
+            for ln in open(p):
+                f = ln.split()
+                if len(f) >= 3:
+                    try:
+                        tbl[(int(f[0]), int(f[1]))] = int(f[2])
+                    except ValueError:
+                        pass
+        return tbl
 
     def write_FEMSTRESS(self, DM, elem_stress, path='FEMSTRESS'):
         """Map element stress onto segments and write what calforce reads.
@@ -219,20 +265,36 @@ class ProdProtocol:
         pos = np.asarray(data['nodes']['positions'], dtype=float).reshape(-1, 3)
         mid = 0.5 * (pos[ids[:, 0]] + pos[ids[:, 1]])
 
+        link = self.read_link_table()
         nmiss = 0
+        nsearch = 0
         with open(path, 'w') as f:
             for i in range(len(mid)):
-                e = self._element_of(mid[i])
+                # the VUMAT's own assignment first; our search only as a fallback
+                e = link.get((int(ids[i, 0]), int(ids[i, 1])))
+                if e is None:
+                    e = link.get((int(ids[i, 1]), int(ids[i, 0])))
+                if e is None:
+                    e = self._element_of(mid[i])
+                    nsearch += 1
                 s = elem_stress.get(e)
                 if s is None:
-                    s = np.zeros(6)
+                    # production skips a segment with no element rather than
+                    # writing zeros for it
+                    # (generate_postprocessing_data12_cleanup_vec.m:505, 525)
                     nmiss += 1
-                else:
-                    s = s * self.stress_scale
-                f.write('%8d %8d ' % (ids[i, 0], ids[i, 1])
-                        + ' '.join('% .8E' % v for v in s) + ' 1\n')
-        self._say('FEMSTRESS: %d segments (%d had no element stress)'
-                  % (len(mid), nmiss))
+                    continue
+                sig = s[:6] * self.stress_scale
+                temp = s[6] if len(s) > 6 else 0.0
+                # columns: n1 n2 | sigma(6) | temperature
+                # the last column is TEMPNEW, not a flag - production writes
+                # it when enabled_temp_disp is on (:507-515)
+                f.write('%06d %06d ' % (ids[i, 0], ids[i, 1])
+                        + ' '.join('%.8e' % v for v in sig)
+                        + ' %.4e\n' % temp)
+        self._say('FEMSTRESS: %d segments, %d from the VUMAT link table, '
+                  '%d by our own search (%d had no element stress)'
+                  % (len(mid), len(mid) - nsearch, nsearch, nmiss))
         return path
 
     def _element_of(self, p):
