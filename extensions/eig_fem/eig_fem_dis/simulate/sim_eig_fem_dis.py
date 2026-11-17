@@ -206,7 +206,6 @@ class SimulationDriver(SimulateNetwork):
 
         (11/17/2026, junho) 옛 위치는 upstream 의 save_old_nodes 가 넣어 준
         state['oldpos_dict'] (태그 -> 위치) 에서 가져온다.
-        예전에는 R_old = R - b 로 가짜를 넣고 있었다.
         """
         cell = DM.cell
         data = DM.export_data()

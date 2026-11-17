@@ -2,14 +2,12 @@
 !=======================================================================
 !  test21 용 DDM VUMAT  (2026-11-16)
 !
-!  종전 파일은 플래그만 주고받는 **순수 탄성** 210 줄짜리였다.
-!  여기서 고리의 나머지 절반을 닫는다:
+!  DD <-> FEM 고리의 FEM 쪽 절반:
 !
 !    (1) OpenDiS 가 쓴 Data_segs.txt 를 읽어 eigenstrain 을 실제로 뺀다
 !          sigma = sigma_old + C : (d_eps - d_eps_p)
 !    (2) 적분점 응력을 모아 FEMSTRESS 를 쓴다
 !          -> OpenDiS 의 ReadRemoteStress 가 그걸 읽는다
-!          (종전에는 손으로 쓴 5 줄 상수 파일이었다)
 !
 !  규약은 우리 ParaDiS DDM VUMAT (VUMAT_DDM_multiple_DDcycle.for) 에서 가져왔다:
 !
@@ -349,9 +347,7 @@ subroutine vexternaldb(lOp, i_Array, niArray, r_Array, nrArray)
 !         id  x  y  z  S11 S22 S33 S23 S13 S12
 !       생산 DDM 에서 Set-SurfaceEl 이 사실상 전체 요소이므로 (STATUS 문서 참고)
 !       여기서도 적분점을 전부 자리로 쓴다.
-!       (11/17/2026, junho) 종전에는 손으로 만든 5 줄 고정 파일이었다. 그 중 한 줄이
-!       (800,800,800) 에 3.55e+12 (다른 자리의 1 만 배) 라서 핵생성이 매 스텝
-!       같은 자리에서만 터졌다.
+!       (11/17/2026, junho) 적분점마다 실제 응력을 쓴다.
         IF (n_mp_ddm .GT. 0) THEN
             OPEN(UNIT=83, FILE=TRIM(full_f_surfstress), STATUS="REPLACE", ACTION="WRITE")
             DO j = 1, n_mp_ddm

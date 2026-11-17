@@ -96,7 +96,7 @@ class ProdProtocol:
         """First fatal line in ABAQUS's own files, or None.
 
         Without this a dead ABAQUS looks exactly like a slow one and we wait
-        out the whole timeout - 41 minutes on 2026-11-17.
+        out the whole timeout.
         """
         marks = ('exited with error', 'Abaqus/Analysis exited',
                  'THE ANALYSIS HAS NOT BEEN COMPLETED', '***ERROR')
@@ -196,8 +196,7 @@ class ProdProtocol:
           * if the file holds more rows than there are elements, ABAQUS
             wrote twice this cycle; keep the FIRST half
           * empty the file afterwards, so the next cycle reads only its own
-            output.  Without this the file grows without bound - it was
-            2.2 MB after 20 steps here.
+            output, and the file does not grow without bound.
         """
         self._load_mesh()
         out = {}
@@ -230,11 +229,9 @@ class ProdProtocol:
 
         Worth preferring over our own search: when a segment midpoint sits
         exactly on an element face, both neighbours pass a bounding-box
-        test and the two codes break the tie differently.  Measured on
-        test21_prod: 2 of 5 segments landed on a face and we picked the
-        neighbour the VUMAT had not used (345 vs 445, 365 vs 465).  Taking
-        the VUMAT's own answer also guarantees we read the stress of the
-        element it deposited the eigenstrain into.
+        test and a geometric search can pick the neighbour the VUMAT did
+        not use.  Taking the VUMAT's own answer also guarantees we read the
+        stress of the element it deposited the eigenstrain into.
 
         The file is appended every exchange, so the LAST row for a pair is
         the current one.

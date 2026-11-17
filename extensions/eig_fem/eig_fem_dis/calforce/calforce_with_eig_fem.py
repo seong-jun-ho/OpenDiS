@@ -111,8 +111,7 @@ class CalForce(CalForce_Base):
     def CalEigstrainField(self, DM: DisNetManager, state: dict) -> dict:
         """ABAQUS 를 깨우기 전에 eigenstrain 입력이 제자리에 있는지 확인한다.
 
-        (11/17/2026, junho) 종전에는 print 만 하는 빈 함수였고, 그래서 ABAQUS 가
-        빈 eigenstrain 으로 돌았다. 이제 세그먼트 파일은 step_write_files 가
+        (11/17/2026, junho) 세그먼트 파일은 step_write_files 가
         ABAQUS 폴더에 Data_segs.txt 로 써 두고, VUMAT 이 그것을 읽어
         sigma = sigma_old + C : (d_eps - d_eps_p) 로 쓴다.
         여기서는 그 파일이 있는지 보고 내용을 요약해 알려 준다 -
