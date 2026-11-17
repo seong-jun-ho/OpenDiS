@@ -5,3 +5,7 @@ stale_*/
 *.out
 *.err
 *_bak
+
+# a snapshot of one exchange, kept on purpose
+!sample_run/
+!sample_run/**

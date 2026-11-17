@@ -157,7 +157,7 @@ if __name__ == "__main__":
 
     # The handshake flags must exist before ABAQUS starts looking for them,
     # so build the adapter here rather than inside the driver.
-    state["_prod_protocol"] = ProdProtocol(state["foldername_ABAQUS"], num_cpus=state.get("num_cpus", 1), stress_scale=1.0e6)
+    state["_prod_protocol"] = ProdProtocol(state["foldername_ABAQUS"], num_cpus=state.get("num_cpus", 1), stress_scale=1.0e6, snapshot_dir="sample_run")
     state["_prod_protocol"].init_flags()
     
     # (09/01/2025, kyeongmi) For initiating ABAQUS subprocess. ABAQUS starts and waits until "ABAQUS_running" flag is shown.

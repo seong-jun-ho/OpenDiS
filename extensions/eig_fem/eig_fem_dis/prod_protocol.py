@@ -25,7 +25,7 @@ class ProdProtocol:
     """Speak the production VUMAT's file and flag protocol."""
 
     def __init__(self, foldername_ABAQUS, num_cpus=1, poll=0.25, verbose=True,
-                 stress_scale=1.0e6):
+                 stress_scale=1.0e6, snapshot_dir=None):
         """stress_scale converts the VUMAT's stress unit to the DD side's.
 
         The production deck works in b and MPa (*Density 1.573e-21,
@@ -38,6 +38,11 @@ class ProdProtocol:
         self.poll = poll
         self.verbose = verbose
         self.stress_scale = float(stress_scale)
+        # Set to a directory to keep one cycle's exchange files as they were,
+        # before read_element_stress empties them.  For documenting the
+        # interface; leave it None in a normal run.
+        self.snapshot_dir = snapshot_dir
+        self._snapped = False
         self._elem_ids = None
         self._elem_lo = None
         self._elem_hi = None
@@ -96,7 +101,7 @@ class ProdProtocol:
         """First fatal line in ABAQUS's own files, or None.
 
         Without this a dead ABAQUS looks exactly like a slow one and we wait
-        out the whole timeout.
+        out the whole timeout - 41 minutes on 2026-11-17.
         """
         marks = ('exited with error', 'Abaqus/Analysis exited',
                  'THE ANALYSIS HAS NOT BEEN COMPLETED', '***ERROR')
@@ -196,7 +201,8 @@ class ProdProtocol:
           * if the file holds more rows than there are elements, ABAQUS
             wrote twice this cycle; keep the FIRST half
           * empty the file afterwards, so the next cycle reads only its own
-            output, and the file does not grow without bound.
+            output.  Without this the file grows without bound - it was
+            2.2 MB after 20 steps here.
         """
         self._load_mesh()
         out = {}
@@ -213,11 +219,32 @@ class ProdProtocol:
                     d = d[:len(d) // 2]
                 for row in d:
                     out[int(row[0])] = row[1:8].astype(float)
+            if self.snapshot_dir and not self._snapped and d.size:
+                self._snapshot(r)
             if truncate:
                 open(p, 'w').close()
         self._say('element stress: %d elements from %s'
                   % (len(out), ', '.join(found) if found else '(no file)'))
         return out
+
+    def _snapshot(self, rank):
+        """Copy this cycle's exchange files aside, before they are emptied."""
+        import shutil
+        os.makedirs(self.snapshot_dir, exist_ok=True)
+        names = ['Output_stress%04d.txt' % (rank + 1),
+                 'Output_link%04d.txt' % (rank + 1),
+                 'Surface_stress%04d.txt' % (rank + 1),
+                 'rn_check%04d.txt' % (rank + 1),
+                 'Data_segs.txt', 'rn_matrix.txt', 'FEM_deltaU.txt',
+                 'surface_elements.txt', 'OriginalCoordNodes.txt']
+        kept = []
+        for n in names:
+            src = self._p(n)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(self.snapshot_dir, n))
+                kept.append(n)
+        self._snapped = True
+        self._say('snapshot -> %s (%s)' % (self.snapshot_dir, ', '.join(kept)))
 
     def read_link_table(self):
         """(n1, n2) -> element, as the VUMAT itself assigned it.
@@ -229,9 +256,11 @@ class ProdProtocol:
 
         Worth preferring over our own search: when a segment midpoint sits
         exactly on an element face, both neighbours pass a bounding-box
-        test and a geometric search can pick the neighbour the VUMAT did
-        not use.  Taking the VUMAT's own answer also guarantees we read the
-        stress of the element it deposited the eigenstrain into.
+        test and the two codes break the tie differently.  Measured on
+        test21_prod: 2 of 5 segments landed on a face and we picked the
+        neighbour the VUMAT had not used (345 vs 445, 365 vs 465).  Taking
+        the VUMAT's own answer also guarantees we read the stress of the
+        element it deposited the eigenstrain into.
 
         The file is appended every exchange, so the LAST row for a pair is
         the current one.

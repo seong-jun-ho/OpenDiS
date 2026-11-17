@@ -1,0 +1,102 @@
+[PROD] created ABAQUSworking flags for 1 rank(s)
+[PROD] created ABAQUSworking flags for 1 rank(s)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] rank 1 had no Matlabworking flag; created ABAQUSworking
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 10.6 s)
+[PROD] mesh: 1000 elements
+[PROD] element stress: 0 elements from (no file)
+[PROD] FEMSTRESS: 5 segments, 0 from the VUMAT link table, 5 by our own search (5 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 1.3 s)
+[PROD] snapshot -> sample_run (Output_stress0001.txt, Output_link0001.txt, Surface_stress0001.txt, rn_check0001.txt, Data_segs.txt, rn_matrix.txt, FEM_deltaU.txt, surface_elements.txt, OriginalCoordNodes.txt)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.5 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.5 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.5 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.5 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.5 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.5 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.5 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
+[PROD] DD turn (waited 0.8 s)
+[PROD] element stress: 1000 elements from Output_stress0001.txt
+[PROD] FEMSTRESS: 5 segments, 5 from the VUMAT link table, 0 by our own search (0 had no element stress)
+[PROD] rn_matrix.txt: 5 nodes
+[PROD] released to ABAQUS
