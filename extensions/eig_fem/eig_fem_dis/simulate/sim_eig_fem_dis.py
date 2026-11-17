@@ -189,21 +189,16 @@ class SimulationDriver(SimulateNetwork):
     # We are waiting for the update which could export old_position of nodes.
     def write_Dis_Segs(self, DM: DisNetManager, filename_Dis_Segs: str,
                        state: dict = None):
-        """Write DisNetManager data to 'Dis_Segs' file
+        """Write the segments in the format the VUMAT reads
+        (VUMAT_DDM_multiple_DDcycle.for:1826-1829).
 
-        [Format] VUMAT (VUMAT_DDM_multiple_DDcycle.for:1826-1829) 이 읽는 그대로:
           line 1 : n_segment  n_segment_final  t_step  EffSlip
-          rows   : NodeID NbrID | r1_old(3) r2_old(3) | r1_new(3) r2_new(3) | dyad(9)
+          rows   : id1 id2 | r1_old(3) r2_old(3) | r1_new(3) r2_new(3) | dyad(9)
 
-        ParaDiS 의 src/WriteArms.cc 와 같은 규약이다:
-          e    = r2_new - r1_old ,  h = r1_new - r2_old
-          n    = e x h                      (쓸고 간 사각형의 법선)
-          nhat = n / |n|                    (**단위벡터**. 크기는 VUMAT 이
-                                             rn_old/rn_new 로 다시 만든다)
-          dyad = outer(nhat, b)
+        dyad = outer(nhat, b), nhat the unit normal of the swept
+        quadrilateral - the same convention as ParaDiS src/WriteArms.cc.
 
-        (11/17/2026, junho) 옛 위치는 upstream 의 save_old_nodes 가 넣어 준
-        state['oldpos_dict'] (태그 -> 위치) 에서 가져온다.
+        (11/17/2026, junho) old positions come from save_old_nodes.
         """
         cell = DM.cell
         data = DM.export_data()
@@ -212,14 +207,12 @@ class SimulationDriver(SimulateNetwork):
 
         oldpos = None if state is None else state.get('oldpos_dict')
         if oldpos is None:
-            raise ValueError(
-                "write_Dis_Segs: state['oldpos_dict'] 가 없다. "
-                "step_integrate 가 save_old_nodes 를 부르는지 확인할 것.")
+            raise ValueError("write_Dis_Segs: no state['oldpos_dict'] - "
+                             "is step_integrate calling save_old_nodes?")
 
-        # (11/17/2026, junho) 토폴로지 연산(Handle_CutSeg, collision, remesh)이
-        # save_old_nodes 뒤에 만든 노드는 시작 위치가 없다. 막 생긴 노드는
-        # 이 스텝에 쓸고 간 것이 없으므로 옛 위치 = 현재 위치로 둔다.
-        # 몇 개인지 반드시 찍는다 - 조용히 넘어갈 근사가 아니다.
+        # (11/17/2026, junho) a node made by topology after save_old_nodes has
+        # no start-of-step position; it swept nothing, so old = current.
+        # Count them out loud - this is an approximation, not a detail.
         def _old_or_current(tags, now):
             out = np.empty((len(tags), 3), dtype=float)
             missing = 0
