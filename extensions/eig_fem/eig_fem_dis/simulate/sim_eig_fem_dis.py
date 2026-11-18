@@ -39,6 +39,7 @@ class SimulationDriver(SimulateNetwork):
                  surface_mobility=None, surface_topology=None,
                  nucleation=None,
                  max_nuc_events=None,
+                 surface_pin=False,
                  prod_protocol=None,
                  **kwargs) -> None:
         super().__init__(state, **kwargs)
@@ -53,6 +54,9 @@ class SimulationDriver(SimulateNetwork):
         # sets 1 so the plastic strain of a single loop can be read on its own.
         self.max_nuc_events = max_nuc_events
         self.nuc_events = 0
+        # (11/18/2026, junho) Pin every node that reaches the free surface,
+        # instead of modelling a coating.  Off by default; see apply_rn_check.
+        self.surface_pin = surface_pin
         # (11/17/2026, junho) Set this to drive the *production* ParaDiS VUMAT
         # (eig_fem_dis.prod_protocol.ProdProtocol).  None keeps the
         # original ABAQUS_pause/running flag path untouched.
@@ -80,6 +84,8 @@ class SimulationDriver(SimulateNetwork):
                     raise RuntimeError("prod_protocol: ABAQUS did not hand back")
                 pp.write_FEMSTRESS(DM, pp.read_element_stress())
                 pp.write_SurfaceStress()
+                # (11/18/2026, junho) and take back what the FEM says about the nodes
+                self.apply_rn_check(DM, state)
             return
         if self.remote_stress != None:
             istep = state['istep']
@@ -93,6 +99,89 @@ class SimulationDriver(SimulateNetwork):
                 self.calforce.FEMRemoteStress(DM, state)
                 
         pass
+    def apply_rn_check(self, DM: DisNetManager, state: dict):
+        """Take back what the FEM says about each node.
+
+        This is the other half of the handshake: write_rn_matrix sends the
+        nodes out, the VUMAT looks for each one in the mesh, and rn_check
+        comes back.  Four things follow from it, and they are the four the
+        MATLAB driver does
+        (generate_postprocessing_data12_cleanup_vec.m:206-221):
+
+          free node the FEM could not place      -> it left the body: flag 6
+          free node the FEM placed, echoing 7    -> inside a second phase: pin it
+          surface node with a projection point   -> move it onto the surface
+          pinned node the FEM could not place    -> flag 6
+
+        Nothing is deleted here, in either code.  A node that leaves the
+        body becomes a surface node and the surface topology deals with it.
+
+        The projection moves a node without that move sweeping any area.
+        That is deliberate and it is what MATLAB does too: the projected
+        position is what restart.data hands ParaDiS, so it is the start of
+        the next step, not the end of this one.  Here the same holds
+        because save_old_nodes runs later, in step_integrate.
+
+        (11/18/2026, junho)
+        """
+        pp = self.prod_protocol
+        if pp is None:
+            return
+
+        seen = pp.read_rn_check()
+        G = DM.get_disnet(DisNet)
+        tags = np.asarray(DM.export_data()['nodes']['tags'], dtype=int)
+        if not seen:
+            print("[RN] rn_check is empty - the FEM said nothing about %d nodes"
+                  % len(tags))
+            return
+
+        FREE, SURF, PIN = 0, 6, 7
+        left = pinned = projected = unpinned = 0
+        for i, tag in enumerate(tags):
+            node = G.nodes(tuple(tag))
+            flag = int(node.constraint)
+            hit = seen.get(i)
+
+            if flag == FREE:
+                # A free node keeps its flag only if the FEM placed it AND
+                # echoed 0 back.  Anything else means it is on, or past, a
+                # boundary of some kind.
+                if hit is not None and hit[0] == FREE:
+                    pass
+                elif hit is not None and hit[0] == PIN:
+                    node.constraint = PIN
+                    pinned += 1
+                else:
+                    node.constraint = SURF
+                    left += 1
+            elif flag == SURF:
+                if hit is not None and np.any(np.abs(hit[1]) > 0.0):
+                    node.R = np.asarray(hit[1], dtype=float).copy()
+                    projected += 1
+            elif flag == PIN:
+                if hit is None:
+                    node.constraint = SURF
+                    unpinned += 1
+
+        if self.surface_pin:
+            # (2026-09-11) Pin at the free surface instead of building
+            # coating elements, as the MATLAB driver does at
+            # generate_postprocessing_data12_cleanup_vec.m:228-240.  flag 7
+            # is the same value the dualPhase VUMAT gave nodes inside the
+            # coating, so everything downstream is unchanged.
+            n = sum(1 for t in tags
+                    if int(G.nodes(tuple(t)).constraint) == SURF)
+            for t in tags:
+                nd = G.nodes(tuple(t))
+                if int(nd.constraint) == SURF:
+                    nd.constraint = PIN
+            print("[RN] surface_pin: flag 6 -> flag 7 on %d nodes" % n)
+
+        print("[RN] %d nodes: %d left the body, %d pinned by the FEM, "
+              "%d projected onto the surface, %d unpinned"
+              % (len(tags), left, pinned, projected, unpinned))
+
     def step_nucleate(self, DM: DisNetManager, state: dict):
         """
         3 Def is called here 

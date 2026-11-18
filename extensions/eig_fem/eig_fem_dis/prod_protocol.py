@@ -246,6 +246,57 @@ class ProdProtocol:
         self._snapped = True
         self._say('snapshot -> %s (%s)' % (self.snapshot_dir, ', '.join(kept)))
 
+    def read_rn_check(self, truncate=True):
+        """What the FEM says back about each dislocation node.
+
+        The VUMAT appends one block per ABAQUS increment to
+        rn_check%04d.txt (VUMAT_DDM_multiple_DDcycle.for:1538-1651), so by
+        the time the turn comes back the file holds many blocks.  Rows are
+
+            id  flag  x y z
+
+        where id indexes rn_matrix.txt, flag is the constraint the FEM
+        echoes back, and x y z is either 0 0 0 (nothing to do) or the point
+        a surface node should be moved to.
+
+        A node the FEM could not place in any element has NO row at all.
+        That absence is the signal; see apply_rn_check.
+
+        MATLAB sorts the rows and lets the first one per id win
+        (generate_postprocessing_data12_cleanup_vec.m:189-209).  Do the
+        same, so both sides pick the same row when a node appears more
+        than once with different contents -- which happens, because the
+        file carries one block per increment.
+
+        (11/18/2026, junho)
+        """
+        rows = []
+        for r in range(self.num_cpus):
+            p = self._p('rn_check%04d.txt' % (r + 1))
+            if not os.path.exists(p):
+                continue
+            try:
+                d = np.loadtxt(p, ndmin=2)
+            except ValueError:
+                d = np.empty((0, 5))
+            if d.size:
+                rows.append(d.reshape(-1, 5))
+            if truncate:
+                open(p, 'w').close()
+        if not rows:
+            self._say('rn_check: nothing to read')
+            return {}
+
+        d = np.vstack(rows)
+        d = d[np.lexsort(tuple(d[:, k] for k in range(d.shape[1] - 1, -1, -1)))]
+        out = {}
+        for row in d:
+            i = int(row[0])
+            if i not in out:
+                out[i] = (int(row[1]), row[2:5].copy())
+        self._say('rn_check: %d rows -> %d nodes' % (len(d), len(out)))
+        return out
+
     def read_link_table(self):
         """(n1, n2) -> element, as the VUMAT itself assigned it.
 
