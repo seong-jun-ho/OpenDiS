@@ -54,17 +54,40 @@ print(u'절점 %d   요소 %d' % (len(nodes), len(elems)))
 if not nodes or not elems:
     sys.exit(u'파싱 실패')
 
+# A face that belongs to exactly one element is on the surface of the
+# body.  That is true whatever the shape is, so a cylinder works as well
+# as a box.  MATLAB then calls an element a surface element when it has
+# ANY node on the surface (import_elements_nodes.m:80), which is what the
+# node set below reproduces -- not "has a free face", which is slightly
+# narrower.
+#   (11/18/2026, junho) was a bounding-box test, which only works on a box.
+FACES = [(0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4),
+         (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+
+face_count = {}
+for eid, conn in elems:
+    for f in FACES:
+        key = tuple(sorted(conn[i] for i in f))
+        face_count[key] = face_count.get(key, 0) + 1
+
+boundary_nodes = set()
+nfree = 0
+for key, c in face_count.items():
+    if c == 1:
+        nfree += 1
+        boundary_nodes.update(key)
+print(u'자유면 %d, 표면 절점 %d / 전체 %d'
+      % (nfree, len(boundary_nodes), len(nodes)))
+
 xs = [c[0] for c in nodes.values()]
 ys = [c[1] for c in nodes.values()]
 zs = [c[2] for c in nodes.values()]
-box = (min(xs), max(xs), min(ys), max(ys), min(zs), max(zs))
-print(u'상자  x %.1f~%.1f  y %.1f~%.1f  z %.1f~%.1f' % box)
+print(u'범위  x %.1f~%.1f  y %.1f~%.1f  z %.1f~%.1f'
+      % (min(xs), max(xs), min(ys), max(ys), min(zs), max(zs)))
 
 
-def on_boundary(c):
-    return (abs(c[0] - box[0]) < TOL or abs(c[0] - box[1]) < TOL or
-            abs(c[1] - box[2]) < TOL or abs(c[1] - box[3]) < TOL or
-            abs(c[2] - box[4]) < TOL or abs(c[2] - box[5]) < TOL)
+def on_boundary_node(n):
+    return n in boundary_nodes
 
 
 # ------------------------------------------------ surface_elements.txt
@@ -72,7 +95,7 @@ p1 = os.path.join(OUT, 'surface_elements.txt')
 nsurf = 0
 with open(p1, 'w') as f:
     for eid, conn in elems:
-        flag = 6 if any(on_boundary(nodes[n]) for n in conn) else 0
+        flag = 6 if any(on_boundary_node(n) for n in conn) else 0
         if flag:
             nsurf += 1
         f.write('%d  %d\n' % (eid, flag))
