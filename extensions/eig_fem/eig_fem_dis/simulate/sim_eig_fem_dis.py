@@ -40,6 +40,7 @@ class SimulationDriver(SimulateNetwork):
                  nucleation=None,
                  max_nuc_events=None,
                  surface_pin=False,
+                 fem_node_feedback=True,
                  prod_protocol=None,
                  **kwargs) -> None:
         super().__init__(state, **kwargs)
@@ -57,6 +58,9 @@ class SimulationDriver(SimulateNetwork):
         # (11/18/2026, junho) Pin every node that reaches the free surface,
         # instead of modelling a coating.  Off by default; see apply_rn_check.
         self.surface_pin = surface_pin
+        # (11/18/2026, junho) Take rn_check back from the FEM.  On is the only
+        # correct setting for a real run; off is for showing what it does.
+        self.fem_node_feedback = fem_node_feedback
         # (11/17/2026, junho) Set this to drive the *production* ParaDiS VUMAT
         # (eig_fem_dis.prod_protocol.ProdProtocol).  None keeps the
         # original ABAQUS_pause/running flag path untouched.
@@ -86,6 +90,8 @@ class SimulationDriver(SimulateNetwork):
                 pp.write_SurfaceStress()
                 # (11/18/2026, junho) and take back what the FEM says about the nodes
                 self.apply_rn_check(DM, state)
+                # (11/18/2026, junho) and then throw away what has left
+                self.surface_cleanup(DM, state)
             return
         if self.remote_stress != None:
             istep = state['istep']
@@ -126,6 +132,10 @@ class SimulationDriver(SimulateNetwork):
         """
         pp = self.prod_protocol
         if pp is None:
+            return
+        if not self.fem_node_feedback:
+            pp.read_rn_check()          # still empty it, or it grows without bound
+            print("[RN] fem_node_feedback is off; the FEM is not listened to")
             return
 
         seen = pp.read_rn_check()
@@ -181,6 +191,118 @@ class SimulationDriver(SimulateNetwork):
         print("[RN] %d nodes: %d left the body, %d pinned by the FEM, "
               "%d projected onto the surface, %d unpinned"
               % (len(tags), left, pinned, projected, unpinned))
+
+    def surface_cleanup(self, DM: DisNetManager, state: dict):
+        """Throw away what has left the body, as the MATLAB driver does.
+
+        apply_rn_check only decides which nodes are surface nodes.  What
+        happens to them is a second block in the same MATLAB function,
+        generate_postprocessing_data12_cleanup_vec.m:341-470, and it is
+        where things actually get deleted.  Six rules, in this order:
+
+          1  a two-armed node whose BOTH neighbours are surface nodes
+             becomes a surface node too (the flag walks along a chain)
+          2  a segment with surface nodes at BOTH ends is deleted
+             -- "is outside of the domain: deleted"
+          3  a segment whose midpoint is in no element at all, with one
+             arm or fewer at each end, is deleted as debris
+          4  a surface node with a single arm whose midpoint is outside
+             is moved to that midpoint
+          5  a node with more than six arms, and its neighbours, are pinned
+          6  a node left with no arms is deleted
+
+        Rule 3 needs to know which element holds each segment midpoint.
+        That is not searched for geometrically: the VUMAT writes the pair
+        it used into Output_link%04d.txt and MATLAB looks it up there
+        (:298-336).  read_link_table already reads that file.
+
+        Rule 1 reads flags while it sets them, so its result depends on
+        the order segments come in -- that is true of the MATLAB too, and
+        the order is kept rather than "improved" to a fixed point, which
+        would flag whole chains the MATLAB would not.
+
+        (11/18/2026, junho)
+        """
+        pp = self.prod_protocol
+        if pp is None or not self.fem_node_feedback:
+            return
+
+        SURF, PIN = 6, 7
+        G = DM.get_disnet(DisNet)
+        tbl = pp.read_link_table()
+
+        # tag -> rn_matrix row, the numbering write_rn_matrix sent out.  The
+        # network has not changed since, so the rows still line up.
+        rows = {tuple(t): i for i, t in
+                enumerate(np.asarray(DM.export_data()['nodes']['tags'], int))}
+
+        def element_of(t1, t2):
+            a, b = rows.get(t1), rows.get(t2)
+            if a is None or b is None:
+                return 0
+            return tbl.get((a, b), tbl.get((b, a), 0))
+
+        def flag(t):
+            return int(G.nodes(t).constraint)
+
+        def segs():
+            return [(tuple(a), tuple(b))
+                    for (a, b), _ in G.all_segments_mapping()]
+
+        n_flag = n_out = n_debris = n_moved = n_pin = n_node = 0
+
+        # 1 -------------------------------------------------- flag walks on
+        if state.get('istep', 0) > 2:
+            for t1, t2 in segs():
+                for a, b in ((t1, t2), (t2, t1)):
+                    if flag(a) == SURF and flag(b) != SURF \
+                            and G.out_degree(b) == 2:
+                        if all(flag(tuple(n)) == SURF
+                               for n in G.neighbors_tags(b)):
+                            G.nodes(b).constraint = SURF
+                            n_flag += 1
+
+        # 2 ------------------------------- both ends outside: drop the arm
+        for t1, t2 in segs():
+            if flag(t1) == SURF and flag(t2) == SURF:
+                G._remove_edge(t1, t2)
+                n_out += 1
+
+        # 3 ------------------------------------------ debris on the surface
+        for t1, t2 in segs():
+            if element_of(t1, t2) == 0 \
+                    and G.out_degree(t1) <= 1 and G.out_degree(t2) <= 1:
+                G._remove_edge(t1, t2)
+                n_debris += 1
+
+        # 4 ---------------------- a lone surface node follows its arm inward
+        for t1, t2 in segs():
+            if element_of(t1, t2) != 0:
+                continue
+            for a, b in ((t1, t2), (t2, t1)):
+                if flag(a) == SURF and G.out_degree(a) == 1:
+                    G.nodes(a).R = 0.5 * (np.asarray(G.nodes(a).R, float)
+                                          + np.asarray(G.nodes(b).R, float))
+                    n_moved += 1
+
+        # 5 ------------------------------------------- too many arms: pin it
+        for t in list(G.all_nodes_tags()):
+            if G.out_degree(t) > 6:
+                G.nodes(t).constraint = PIN
+                for nb in G.neighbors_tags(t):
+                    G.nodes(tuple(nb)).constraint = PIN
+                n_pin += 1
+
+        # 6 --------------------------------------------- nothing left to do
+        for t in list(G.all_nodes_tags()):
+            if G.out_degree(t) == 0:
+                G._remove_node(t)
+                n_node += 1
+
+        if n_flag or n_out or n_debris or n_moved or n_pin or n_node:
+            print("[CLEAN] flag walked %d, outside %d, debris %d, "
+                  "moved %d, pinned %d, nodes dropped %d"
+                  % (n_flag, n_out, n_debris, n_moved, n_pin, n_node))
 
     def step_nucleate(self, DM: DisNetManager, state: dict):
         """
@@ -751,24 +873,31 @@ class Nucleation:
         # copy state as st
         st = dict(state)
         st.setdefault("center", (float(self.x[k]), float(self.y[k]), float(self.z[k])))
-        st.setdefault("loopR", 40.0)
+        # (11/18/2026, junho) ParaDiS reads this from the control file as
+        # LoopRadius and defaults it to 50 b (src/Param.cc:575).  None of the
+        # 125 control files in the production tree sets it, so every
+        # production run has used 50.
+        st.setdefault("loopR", 50.0)
         st.setdefault("normal", n)
         st.setdefault("burgers", b)
 
         # call 
         c = np.asarray(st["center"], float)
-        #R = float(st["loopR"])
-        R = float(200)
+        R = float(st["loopR"])
         nrm = np.asarray(st["normal"], float)
         bvec = np.asarray(st["burgers"], float)
 
         # Num node: int(2πR/mexseg), 5~10
         num_min = int(st.get("num_min", 5))
         num_max = int(st.get("num_max", 10))
-        seg_len = float(st.get("seg_len", st.get("mexseg", 15.0)))
+        # (11/18/2026, junho) ParaDiS: NumNode = 2 pi R / maxSeg, clamped to
+        # 5..10 (src/LoopGenerate_FCC.cc:63-98).  "mexseg" was a typo for the
+        # state key "maxseg", so this read the 15.0 default instead of the
+        # deck's maximum segment length, and the count was overridden by 6
+        # regardless.
+        seg_len = float(st.get("seg_len", st.get("maxseg", 15.0)))
         est = int(2.0 * np.pi * R / max(seg_len, 1e-9))
-        #nnode = max(5, min(num_max, max(num_min, est)))
-        nnode = int(6)
+        nnode = max(num_min, min(num_max, est))
 
         # lower bound
         if nnode < num_min:
@@ -796,8 +925,11 @@ class Nucleation:
         # node coordinate
         thetas = np.linspace(0.0, 2.0 * np.pi, nnode, endpoint=False)
         xyz = np.array([c + R * (np.cos(t) * e1 + np.sin(t) * e2) for t in thetas])
+        # (11/18/2026, junho) Every node of a nucleated loop is
+        # unconstrained in ParaDiS (src/LoopGenerate_FCC.cc:126 is the only
+        # place the file sets a constraint).  Pinning two of them left those
+        # two stuck wherever the loop was born, outside the mesh included.
         constraints = np.zeros((nnode, 1), dtype=int)
-        constraints[[0, -1], 0] = 7
 
         # rn : [gid, lid, x, y, z, constraint]
         tags = np.array([[gid0, lid0 + i] for i in range(nnode)], dtype=int)

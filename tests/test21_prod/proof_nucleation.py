@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 """One nucleation event: is the plastic strain we hand to ABAQUS its own area?
 
-A nucleated loop is a regular hexagon of circumradius R, and its nodes are
-born with their old position at the centre of the loop.  Every one of the six
+A nucleated loop is a regular polygon of circumradius R, and its nodes are
+born with their old position at the centre of the loop.  Each of its n
 segments therefore sweeps the triangle (centre, r_i, r_j) on the step it
-appears, and the six triangles are the hexagon:
+appears, and the n triangles are the polygon:
 
-    A = 6 * (1/2) R^2 sin(60 deg) = (3 sqrt(3) / 2) R^2
+    A = n * (1/2) R^2 sin(2 pi / n)
+
+ParaDiS picks both from the deck -- R is LoopRadius (50 b by default) and
+n is 2 pi R / maxSeg clamped to 5..10 -- so read them from the run rather
+than assuming a hexagon of 200 b.
 
 Nothing in that is a modelling choice -- it is the area of a hexagon.  So the
 plastic strain the loop contributes has to be
@@ -26,35 +30,37 @@ import sys
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-R_LOOP = 200.0            # Nucleation.FullLoop hardcodes this
 L_BOX = 1000.0            # test_nucleation_one.py: Lbox
 VOIGT = ['xx', 'yy', 'zz', 'yz', 'xz', 'xy']
 
 
-def hexagon_area(R):
-    return 1.5 * np.sqrt(3.0) * R * R
+def polygon_area(R, n):
+    """Area of a regular n-gon with circumradius R."""
+    return 0.5 * n * R * R * np.sin(2.0 * np.pi / n)
 
 
 def find_nucleation_step(logpath):
-    """Return (istep, centre) of the step the loop was inserted on.
+    """Return (istep, centre, R, n) for the step the loop was inserted on.
 
     step_nucleate runs before step_print_info, so the "step = N" that follows
     the insertion is the step the loop belongs to -- not the one before it.
     """
-    ins_re = re.compile(r'Nucleation loop inserted!\s*center=\[([^\]]*)\]')
+    ins_re = re.compile(r'Nucleation loop inserted!\s*center=\[([^\]]*)\]'
+                        r',\s*R=([0-9.eE+-]+),\s*nnode=(\d+)')
     step_re = re.compile(r'^step = (\d+)')
-    centre = None
+    centre = R = n = None
     with open(logpath) as f:
         for line in f:
             if centre is None:
                 m = ins_re.search(line)
                 if m:
                     centre = np.array([float(v) for v in m.group(1).split()])
+                    R, n = float(m.group(2)), int(m.group(3))
                 continue
             m = step_re.match(line)
             if m:
-                return int(m.group(1)), centre
-    return None, None
+                return int(m.group(1)), centre, R, n
+    return None, None, None, None
 
 
 def read_dis_segs(path):
@@ -92,11 +98,11 @@ def main():
     out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE,
                                                              'output_one_nuc')
 
-    istep, centre = find_nucleation_step(log)
+    istep, centre, R_LOOP, N_LOOP = find_nucleation_step(log)
     if istep is None:
         sys.exit('no "Nucleation loop inserted" in %s -- nothing nucleated' % log)
-    print('nucleated on step %d, loop centre %s'
-          % (istep, np.array2string(centre, precision=1)))
+    print('nucleated on step %d, loop centre %s, R = %.1f b, %d nodes'
+          % (istep, np.array2string(centre, precision=1), R_LOOP, N_LOOP))
 
     path = os.path.join(out, 'Dis_Segs_%d' % istep)
     (nseg, _, t_step, eff_slip), rows = read_dis_segs(path)
@@ -114,19 +120,20 @@ def main():
     if k.size == 0:
         sys.exit('found none -- did the old positions get registered?')
 
-    tri = hexagon_area(R_LOOP) / 6.0
+    tri = polygon_area(R_LOOP, N_LOOP) / N_LOOP
     print('')
-    print('   seg        swept area [b^2]     hexagon/6      ratio')
+    print('   seg        swept area [b^2]     polygon/%d     ratio' % N_LOOP)
     for i in k:
         a = np.linalg.norm(Sn[i])
         print('  %4d-%-4d   %16.4f  %13.4f  %9.6f'
               % (rows[i, 0], rows[i, 1], a, tri, a / tri))
 
     total = np.linalg.norm(Sn[k].sum(axis=0))
-    A = hexagon_area(R_LOOP)
+    A = polygon_area(R_LOOP, N_LOOP)
     print('')
-    print('  sum of the six      %16.4f' % total)
-    print('  (3 sqrt3 / 2) R^2   %16.4f   with R = %.0f b' % (A, R_LOOP))
+    print('  sum of the %d       %16.4f' % (N_LOOP, total))
+    print('  (n/2) R^2 sin(2pi/n) %15.4f   with R = %.0f b, n = %d'
+          % (A, R_LOOP, N_LOOP))
     print('  ratio               %16.9f   (%.2e off)'
           % (total / A, abs(total / A - 1.0)))
 
@@ -182,7 +189,7 @@ def main():
 
     off = abs(total / A - 1.0)
     print('')
-    print('VERDICT: swept area is the hexagon to %.2e' % off)
+    print('VERDICT: swept area is the %d-gon to %.2e' % (N_LOOP, off))
     return 0 if off < 1e-6 else 1
 
 

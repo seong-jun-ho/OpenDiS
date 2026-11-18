@@ -14,32 +14,70 @@ from framework.mobility_base import MobilityLaw_Base
 
 from typing import Tuple
 
+# (11/18/2026, junho) ParaDiS tests a node with
+#     HAS_ANY_OF_CONSTRAINTS(constraint, FEM_DD_SURFACE_NODE)
+# which is ((constraint & 6) != 0) -- include/Node.h:62,90.  Keep the same
+# bit test, so the two codes call the same nodes surface nodes.  It is true
+# for 6 and also for 7, the pinned nodes, which the bulk mobility already
+# holds still, so including them changes nothing.
+SURFACE_BITS = 6
+
 
 class MobilityLaw(MobilityLaw_Base):
     """MobilityLaw: class for mobility laws of surface nodes
     """
-    def __init__(self, state: dict={}, mobility_bulk=None) -> None:
+    def __init__(self, state: dict={}, mobility_bulk=None,
+                 surface_mobility: bool=True) -> None:
         self.mobility_bulk = mobility_bulk
+        # (11/18/2026, junho) Hold surface nodes still, as ParaDiS does.
+        # On is the only setting that matches ParaDiS; off is for showing
+        # what the rule does.
+        self.surface_mobility = surface_mobility
         
-    def OneNodeMobility_Project(self, DM: DisNetManager, state: dict, tag: Tag, f: np.array, update_state: bool=True) -> np.array:
-        """NodeMobility_Project: project surface node velocity to the surface
+    def OneNodeMobility_Project(self, DM: DisNetManager, state: dict, tag: Tag,
+                                f: np.array, update_state: bool=True) -> np.array:
+        """A surface node does not move.
+
+        ParaDiS means to give a surface node the average velocity of its
+        unconstrained neighbours (src/MobilityLaw_FCC_0.cc:495-537), but
+        that branch cannot run.  It counts neighbours with
+
+            HAS_ANY_OF_CONSTRAINTS(nbr->constraint, UNCONSTRAINED)
+
+        and UNCONSTRAINED is 0, so the test is ((c & 0) != 0), false for
+        every node.  The count is always zero, the code falls into its
+        "num <= 1" case, and the velocity is set to zero.  The Lr_max >=
+        100 rule just below it can then never change anything either.
+
+        So what every binary actually does is hold surface nodes still,
+        and that is what is reproduced here.  Writing the averaging rule
+        instead would NOT reproduce ParaDiS.
+
+        (11/18/2026, junho)
         """
-        G = DM.get_disnet(DisNet)
-        vel = np.zeros([0.0, 0.0, 0.0])
-        return vel
+        return np.zeros(3)
 
     def Mobility(self, DM: DisNetManager, state: dict) -> dict:
-        """Mobility: compute all nodal velocities and store them in the state dictionary
-        """
+        """Mobility: bulk velocities, then hold the surface nodes still."""
         state = self.mobility_bulk.Mobility(DM, state)
-        print("Mobility: project surface node velocity to surface")
-        #nodeforce_dict = state["nodeforce_dict"]
-        #vel_dict = nodeforce_dict.copy()
-        #G = DM.get_disnet(DisNet)
-        #for tag in G.all_nodes_tags():
-        #    f = vel_dict[tag].copy()
-        #    vel_dict[tag] = self.OneNodeMobility_Project(DM, tag, f)
-        #state["vel_dict"] = vel_dict
+        if not self.surface_mobility:
+            return state
+
+        vel_dict = state.get("vel_dict")
+        if vel_dict is None:
+            print("Mobility: no vel_dict to correct")
+            return state
+
+        G = DM.get_disnet(DisNet)
+        held = 0
+        for tag in vel_dict:
+            if int(G.nodes(tag).constraint) & SURFACE_BITS:
+                vel_dict[tag] = self.OneNodeMobility_Project(
+                    DM, state, tag, vel_dict[tag])
+                held += 1
+        state["vel_dict"] = vel_dict
+        state = DisNet.convert_nodevel_dict_to_array(state)
+        print("Mobility: %d surface/pinned node(s) held still" % held)
         return state
 
     def OneNodeMobility(self, DM: DisNetManager, state: dict, tag: Tag, f: np.array, update_state: bool=True) -> np.array:

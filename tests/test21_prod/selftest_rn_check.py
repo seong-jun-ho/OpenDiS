@@ -39,6 +39,7 @@ class Shim(object):
     def __init__(self, pp, surface_pin=False):
         self.prod_protocol = pp
         self.surface_pin = surface_pin
+        self.fem_node_feedback = True
 
     apply_rn_check = SimulationDriver.apply_rn_check
 

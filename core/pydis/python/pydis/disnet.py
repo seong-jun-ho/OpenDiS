@@ -1110,7 +1110,15 @@ class DisNet(DisNet_Python):
             if node.num_neighbors() == 0:
                 print("Node %s has no neighbors" % (str(tag)))
                 return False
-            if node.attr.constraint == DisNode.Constraints.PINNED_NODE: continue
+            # (11/18/2026, junho) A node on a free surface is where a
+            # dislocation ends, so its Burgers vectors do not sum to
+            # zero and must not be asked to.  ParaDiS exempts both
+            # kinds (src/DebugFunctions.cc:73-77, PINNED_NODE |
+            # SURFACE_NODE | FEM_DD_SURFACE_NODE); only the pinned one
+            # was exempt here.
+            if node.attr.constraint in (
+                    DisNode.Constraints.PINNED_NODE,
+                    DisNode.Constraints.CYLINDER_SURFACE_NODE): continue
             b_tot = np.zeros(3)
             for edge in node.edges():
                 b_tot += edge.attr.burg_vec_from(tag)

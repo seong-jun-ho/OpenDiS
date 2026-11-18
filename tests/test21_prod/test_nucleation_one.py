@@ -66,8 +66,13 @@ def main():
 
     # (08/14/2025, kyeongmi) Since state dictionary has already been defined for ABAQUS initiation,
     #                        one should "update" the state dict. (DO NOT overwrite it) 
-    state.update({"burgmag": 3e-10, "mu": 50e9, "nu": 0.3, "a": 1.0, "maxseg": 0.4*Lbox, "minseg": 0.1*Lbox, "rann": 3.0, "mob": 1.0})
+    state.update({"burgmag": 3e-10, "mu": 50e9, "nu": 0.3, "a": 1.0, "maxseg": 125.0, "minseg": 25.0, "rann": 3.0, "mob": 1.0})
 
+    # (11/18/2026, junho) The segment lengths are production's, not a
+    # fraction of the box: a nucleated loop has radius 50 b (LoopRadius)
+    # and sides of 59 b, so minseg = 0.1 Lbox = 100 b remeshed every loop
+    # away on the step it was born.  61 of the production decks use
+    # 125 / 25 and the nucleation ones use 65 / 13.
     calforce_bulk  = CalForce_Bulk(force_mode='LineTension', state=state)
     mobility_bulk  = MobilityLaw_Bulk(mobility_law='SimpleGlide', state=state)
     timeint   = TimeIntegration(integrator='EulerForward', dt=1.0e-8, state=state)
