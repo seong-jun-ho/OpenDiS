@@ -37,7 +37,8 @@ class SimulationDriver(SimulateNetwork):
     def __init__(self, state: dict,
                  remote_stress=None, remote_force=None,
                  surface_mobility=None, surface_topology=None,
-                 nucleation=None, 
+                 nucleation=None,
+                 max_nuc_events=None,
                  prod_protocol=None,
                  **kwargs) -> None:
         super().__init__(state, **kwargs)
@@ -47,6 +48,11 @@ class SimulationDriver(SimulateNetwork):
         self.surface_mobility = surface_mobility
         self.surface_topology = surface_topology
         self.nucleation = nucleation
+        # (11/18/2026, junho) Stop nucleating after this many loops.  None is
+        # unlimited, which is what a production run wants; a validation run
+        # sets 1 so the plastic strain of a single loop can be read on its own.
+        self.max_nuc_events = max_nuc_events
+        self.nuc_events = 0
         # (11/17/2026, junho) Set this to drive the *production* ParaDiS VUMAT
         # (eig_fem_dis.prod_protocol.ProdProtocol).  None keeps the
         # original ABAQUS_pause/running flag path untouched.
@@ -99,7 +105,13 @@ class SimulationDriver(SimulateNetwork):
         nu = self.nucleation
         if nu is None:
             print("[NUC] no nucleator attached; skip")
-            return  
+            return
+
+        if (self.max_nuc_events is not None
+                and self.nuc_events >= self.max_nuc_events):
+            print("[NUC] %d loop(s) nucleated, cap is %d; skip"
+                  % (self.nuc_events, self.max_nuc_events))
+            return
 
         # (11/17/2026, junho) nothing has run on the FEM side yet on the first
         # step, so there is no stress to decide nucleation from.  Skip rather
@@ -134,23 +146,25 @@ class SimulationDriver(SimulateNetwork):
 
         # 4) call loopgenerate
         for k in sel:
-            # (11/17/2026, junho) 새 루프 노드에 old 좌표를 달아 준다.
-            # save_old_nodes 는 step_integrate 에서 이미 돌았으므로, 여기서
-            # 생기는 노드는 시작 위치가 없다. ParaDiS 는 그런 노드의 old 좌표를
-            # 루프 중심에 둔다 (src/LoopGenerate_FCC.cc:131-133):
-            # 그러면 세그먼트별로 쓸고 간 삼각형의 합 = 루프 면적이 되어,
-            # 갓 생긴 루프의 면적이 그 스텝의 소성변형률로 한 번 계산된다.
+            # (11/17/2026, junho) Give the new loop nodes an old position.
+            # save_old_nodes already ran in step_integrate, so a node born here
+            # has no start-of-step position.  ParaDiS puts it at the centre of
+            # the loop (src/LoopGenerate_FCC.cc:131-133), which makes the
+            # per-segment swept triangles add up to the area of the loop: a
+            # freshly nucleated loop contributes its own area to the plastic
+            # strain of that step, once.
             G = DM.get_disnet(DisNet)
             before = set(tuple(t) for t in G.all_nodes_tags())
 
             nu.loopgenerate(DM, site_index=int(k), state=state)
+            self.nuc_events += 1
 
             G = DM.get_disnet(DisNet)
             fresh = [t for t in (tuple(x) for x in G.all_nodes_tags())
                      if t not in before]
             oldpos = state.get('oldpos_dict')
             if oldpos is None:
-                print("[NUC] oldpos_dict 가 없다 - old 좌표 등록을 건너뛴다")
+                print("[NUC] no oldpos_dict - skipping the old position")
             elif fresh:
                 c = np.array([float(nu.x[k]), float(nu.y[k]), float(nu.z[k])])
                 for t in fresh:
@@ -243,7 +257,7 @@ class SimulationDriver(SimulateNetwork):
                   "(created by topology after save_old_nodes); "
                   "treated as not having swept" % (m1 + m2))
 
-        # segment_dyads 와 같은 최소상 순서
+        # same minimum-image order as segment_dyads
         r2 = np.asarray(cell.closest_image(Rref=r1, R=r2))
         r3 = np.asarray(cell.closest_image(Rref=r1, R=r1_old))
         r4 = np.asarray(cell.closest_image(Rref=r3, R=r2_old))
@@ -264,7 +278,7 @@ class SimulationDriver(SimulateNetwork):
         nid2 = np.asarray(tags2, dtype=int).reshape(-1, 2)[:, 1]
 
         with open(filename_Dis_Segs, "w") as file:
-            # 아직 서브스텝 병합이 없으므로 final block = 전체
+            # nothing merges substeps yet, so the final block is all of it
             file.write("%d %d %.8e %.8e\n" % (Nseg, Nseg, t_step, eff_slip))
             for i in range(Nseg):
                 vals = list(r3[i]) + list(r4[i]) + list(r1[i]) + list(r2[i]) \
@@ -301,9 +315,9 @@ class SimulationDriver(SimulateNetwork):
             # Here we call a new function to print out the data to Dis_Segs
             self.write_Dis_Segs(DM, os.path.join(self.write_dir,
                                 f'Dis_Segs_{istep}'), state)
-            # (11/17/2026, junho) ABAQUS 가 읽을 자리에도 같은 내용을 둔다.
-            # 새 VUMAT 이 vexternaldb(StartIncrement) 에서 Data_segs.txt 를
-            # 읽어 eigenstrain 을 실제로 뺀다.
+            # (11/17/2026, junho) Put the same thing where ABAQUS reads it: the
+            # VUMAT reads Data_segs.txt in vexternaldb(StartIncrement) and takes
+            # the eigenstrain out there.
             aba = state.get('foldername_ABAQUS', None)
             if aba:
                 self.write_Dis_Segs(DM, os.path.join(aba, 'Data_segs.txt'), state)
@@ -314,9 +328,9 @@ class SimulationDriver(SimulateNetwork):
                     self.prod_protocol.write_rn_matrix(DM, state)
                     self.prod_protocol.release_to_abaqus()
 
-            # (11/17/2026, junho) 검증용: PyDiS 가 자체 계산한 dEp 를 남긴다.
-            # Dis_Segs 에서 손으로 계산한 값과 대조하면, 우리가 FEM 으로 보낸
-            # 소성변형률이 맞는지 **독립 경로 두 개**로 확인할 수 있다.
+            # (11/17/2026, junho) For checking: keep the dEp that PyDiS worked out
+            # itself.  Against the value computed by hand from Dis_Segs it gives
+            # two independent paths to the same plastic strain.
             dep = state.get('dEp', None)
             if dep is not None:
                 p = os.path.join(self.write_dir, 'dEp_pydis.csv')
